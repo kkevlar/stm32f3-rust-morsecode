@@ -329,9 +329,47 @@ mod buster {
     }
 }
 
+fn setup_input(rcc : &RegisterBlock, gpioa: &RegisterBlock)
+{
+    // Allow GPIOA
+    rcc.ahbenr.modify(|_, w| w.iopaen().set_bit());
+
+    gpioa.moder.modify(|_, w| 
+        w.moder0().input()
+    );
+
+    unsafe{
+    gpioa.pupdr.modify(|_, w| 
+        w.pupdr0().bits(2)
+    );
+}
+
+fn poll_morse(mut start_time : u16, tim6: &RegisterBlock, poll_delay : u16)
+{
+    let count = 1000 / poll_delay;
+    
+    let intensities : Vec<_, U1024> = Vec::new();
+
+    for i in 0..count
+    {
+ let bit : bool = gpioa.idr.read().idr0().bit();
+
+ intensities.push(( start_time,
+ match bit
+ {
+false => 100,
+true => 1000,
+ }));
+
+ delay(tim6, poll_delay);
+ start_time += poll_delay;
+
+    }
+}
+
 #[entry]
 fn main() -> ! {
-    let (mut leds, rcc, tim6) = aux9::init();
+    let (mut leds, gpioa, rcc, tim6) = aux9::init();
 
     // Power on the TIM6 timer
     rcc.apb1enr.modify(|_, w| w.tim6en().set_bit());
@@ -347,7 +385,9 @@ fn main() -> ! {
     // The counter (CNT) will increase on every millisecond
     tim6.psc.write(|w| w.psc().bits(7_999));
 
-    buster::buster(&mut leds);
+    setup_input(rcc, gpioa);
+
+    poll_morse();
 
     let ms = 50;
     loop {

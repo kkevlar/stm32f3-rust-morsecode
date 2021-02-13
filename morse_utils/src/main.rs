@@ -1,4 +1,3 @@
-
 use heapless::consts::*;
 use heapless::Vec;
 
@@ -35,23 +34,22 @@ macro_rules! hashmap {
 
 // }
 
-const test_durations : [i64; 52] = [
-        700, 300, 100, 100, 100, 100, 100, 100, 300, 300, 100, 300, 100, 300, 300, 100, 100, 100,
-        100, 300, 300, 300, 300, 300, 300, 100, 300, 300, 300, 100, 100, 700, 300, 100, 300, 100,
-        300, 300, 300, 100, 300, 100, 300, 300, 100, 100, 100, 100, 300, 100, 100, 700,
-    ];
- const myint: [(Time, LightIntensity); 9] = [
-        (5, 50),
-        (10, 50),
-        (15, 500),
-        (20, 50),
-        (25, 500),
-        (30, 50),
-        (35, 500),
-        (40, 50),
-        (60, 51),
-    ];
-
+const test_durations: [i64; 52] = [
+    700, 300, 100, 100, 100, 100, 100, 100, 300, 300, 100, 300, 100, 300, 300, 100, 100, 100, 100,
+    300, 300, 300, 300, 300, 300, 100, 300, 300, 300, 100, 100, 700, 300, 100, 300, 100, 300, 300,
+    300, 100, 300, 100, 300, 300, 100, 100, 100, 100, 300, 100, 100, 700,
+];
+const myint: [(Time, LightIntensity); 9] = [
+    (5, 50),
+    (10, 50),
+    (15, 500),
+    (20, 50),
+    (25, 500),
+    (30, 50),
+    (35, 500),
+    (40, 50),
+    (60, 51),
+];
 
 fn helper_fill_events_slice<T>(durations: &[i64], vec: &mut Vec<TimedLightEvent, T>)
 where
@@ -72,45 +70,34 @@ where
     }
 }
 
-
-
-
 fn main() -> () {
     use morse_utils::*;
 
-let mut timed_light_events: Vec<TimedLightEvent, U64> = Vec::new();
+    let mut timed_light_events: Vec<TimedLightEvent, U64> = Vec::new();
     helper_fill_events_slice(&test_durations, &mut timed_light_events);
-
 
     let expected: Scored<i64> = Scored {
         item: 100,
         score: 0,
     };
     match estimate_unit_time(&timed_light_events, 100, 110) {
-        Ok(actual) if expected == actual => {
-        },
-        Err(_) => loop {
-        },
-        _ => 
-        loop {
-        },
+        Ok(actual) if expected == actual => {}
+        Err(_) => loop {},
+        _ => loop {},
     };
 
- 
     let mut ttt: Vec<TimedLightEvent, U32> = Vec::new();
     match convert(&myint[0..], &mut ttt, 0) {
-        Err(_) => loop {
-        },
+        Err(_) => loop {},
         _ => (),
     };
 
     let r = estimate_unit_time(&ttt, 5, 6);
     let mut unwr;
     match r {
-        Err(_) => loop {
-        },
+        Err(_) => loop {},
         Ok(r) => unwr = r.item,
     }
 
-println!  ("{:?}",timed_light_events)   ;
+    println!("{:?}", timed_light_events);
 }

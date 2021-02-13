@@ -197,29 +197,23 @@ fn fill_unit_time_possibilities() {
 pub fn calc_digital_cutoffs(
     intensities: &[(Time, LightIntensity)],
 ) -> Result<(LightIntensity, LightIntensity), core::num::TryFromIntError> {
-    let mut intensity_sum: u32 = 0; 
+    let mut intensity_sum: u32 = 0;
 
-    for (_, li) in intensities
-    {
+    for (_, li) in intensities {
         intensity_sum += *li as u32;
     }
 
     let intensity_avg: u32 = intensity_sum / (intensities.len() as u32);
 
-        let mut lows = (0u32, 0u32);
-        let mut highs = (0u32, 0u32);
-    for (_ , li) in intensities
-    {
+    let mut lows = (0u32, 0u32);
+    let mut highs = (0u32, 0u32);
+    for (_, li) in intensities {
         let li = *li as u32;
-        if li > intensity_avg
-        {
-           highs = (highs.0+1, highs.1 +li);
+        if li > intensity_avg {
+            highs = (highs.0 + 1, highs.1 + li);
+        } else {
+            lows = (lows.0 + 1, lows.1 + li);
         }
-        else 
-        {
-           lows = (lows.0+1, lows.1 +li);
-        }
-
     }
 
     let lows_avg = lows.1 / lows.0;
@@ -229,10 +223,7 @@ pub fn calc_digital_cutoffs(
     let low_cut = lows_avg + (diff / 4);
     let high_cut = lows_avg + ((3 * diff) / 4);
 
-    Ok((
-        low_cut as u16,
-        high_cut as u16,
-    ))
+    Ok((low_cut as u16, high_cut as u16))
 }
 
 pub fn convert<C>(
