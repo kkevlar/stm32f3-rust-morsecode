@@ -155,104 +155,100 @@ mod buster {
         }
     }
 
-    const MORSE_KEY : [(&str, char); 26] = 
-    [
-( "01" , 'a'),
-(        "1000" , 'b'),
-(        "1010" , 'c'),
-(        "100" , 'd'),
-(        "0" , 'e'),
-(        "0010" , 'f'),
-(        "110" , 'g'),
-(        "0000" , 'h'),
-(        "00" , 'i'),
-(        "0111" , 'j'),
-(        "101" , 'k'),
-(        "0100" , 'l'),
-(        "11" , 'm'),
-(        "10" , 'n'),
-(        "111" , 'o'),
-(        "0110" , 'p'),
-(        "1101" , 'q'),
-(        "010" , 'r'),
-(        "000" , 's'),
-(        "1" , 't'),
-(        "001" , 'u'),
-(        "0001" , 'v'),
-(        "011" , 'w'),
-(        "1001" , 'x'),
-(        "1011" , 'y'),
-(        "1100" , 'z'),
+    const MORSE_KEY: [(&str, char); 26] = [
+        ("01", 'a'),
+        ("1000", 'b'),
+        ("1010", 'c'),
+        ("100", 'd'),
+        ("0", 'e'),
+        ("0010", 'f'),
+        ("110", 'g'),
+        ("0000", 'h'),
+        ("00", 'i'),
+        ("0111", 'j'),
+        ("101", 'k'),
+        ("0100", 'l'),
+        ("11", 'm'),
+        ("10", 'n'),
+        ("111", 'o'),
+        ("0110", 'p'),
+        ("1101", 'q'),
+        ("010", 'r'),
+        ("000", 's'),
+        ("1", 't'),
+        ("001", 'u'),
+        ("0001", 'v'),
+        ("011", 'w'),
+        ("1001", 'x'),
+        ("1011", 'y'),
+        ("1100", 'z'),
     ];
 
-    pub fn lookup(s: &str) -> char
-    {
+    pub fn lookup(s: &str) -> char {
         let mut ret = '?';
-        for (seq, c) in MORSE_KEY.iter()
-        {
-            if &s == seq
-            {
+        for (seq, c) in MORSE_KEY.iter() {
+            if &s == seq {
                 ret = *c;
             }
         }
         ret
     }
 
-    fn letterify<S>(morse : & mut Vec<morse_utils::Morse, S>) -> char
+    fn letterify<S>(morse: &mut Vec<morse_utils::Morse, S>) -> char
     where
         S: heapless::ArrayLength<morse_utils::Morse>,
     {
-        let mut curr_str : heapless::String<U64> = heapless::String::new();
+        let mut curr_str: heapless::String<U64> = heapless::String::new();
         let mut did_error = false;
         let mut is_space = false;
-            let mut expect_tiny_space = false;
+        let mut expect_tiny_space = false;
 
-        loop
-        {
+        loop {
             use morse_utils::Morse::*;
             let m = morse.pop();
-is_space=false;
-            match m 
-            {
-                None | Some(LetterSpace) => break, 
-                Some(WordSpace) => { is_space = true; break}
+            is_space = false;
+            match m {
+                None | Some(LetterSpace) => break,
+                Some(WordSpace) => {
+                    is_space = true;
+                    break;
+                }
                 Some(TinySpace) if expect_tiny_space => expect_tiny_space = false,
-                Some(Dot) if !expect_tiny_space => { curr_str.push('0').unwrap(); expect_tiny_space = true },
-                Some(Dash) if !expect_tiny_space => { curr_str.push('1').unwrap(); expect_tiny_space = true },
-                _ => 
-                {
-did_error = true;
-break;
-                },
+                Some(Dot) if !expect_tiny_space => {
+                    curr_str.push('0').unwrap();
+                    expect_tiny_space = true
+                }
+                Some(Dash) if !expect_tiny_space => {
+                    curr_str.push('1').unwrap();
+                    expect_tiny_space = true
+                }
+                _ => {
+                    did_error = true;
+                    break;
+                }
             };
         }
 
-        match (did_error, is_space)
-        {
+        match (did_error, is_space) {
             (true, _) => '?',
             (false, true) => ' ',
-            (false, false) => {
-                lookup(curr_str.as_str())
-            }
+            (false, false) => lookup(curr_str.as_str()),
         }
     }
 
-    fn heapless_reverse<T,S> (mut input : Vec<T,S>) -> Vec<T,S>
+    fn heapless_reverse<T, S>(mut input: Vec<T, S>) -> Vec<T, S>
     where
         S: heapless::ArrayLength<T>,
     {
-        let mut output : Vec<T,S> = Vec::new();
-        loop
-        {
-            match input.pop()
-            {
+        let mut output: Vec<T, S> = Vec::new();
+        loop {
+            match input.pop() {
                 Some(x) => output.push(x),
-                _ => break
+                _ => break,
             };
         }
         output
     }
-
 
     pub fn buster(leds: &mut aux9::Leds) -> bool {
         let mut vb: Vec<u8, U8> = Vec::new();
@@ -294,27 +290,23 @@ break;
             }
         }
 
-        loop
-        {
-let c = letterify(&mut r);
-                    leds[0].off();
-if c == '?'
-                    { leds[1].on(); }
-
+        loop {
+            let c = letterify(&mut r);
+            leds[0].off();
+            if c == '?' {
+                leds[1].on();
+            }
         }
 
         vb.push(90);
         vc.push(90);
         vc.push(0);
 
-
-                if lookup("01") == 'a' {
-                    leds[0].on();
-                } else {
-                    leds[0].off();
-                }
-          
-
+        if lookup("01") == 'a' {
+            leds[0].on();
+        } else {
+            leds[0].off();
+        }
 
         //         if vb[0] == vc[0]
         //         {
