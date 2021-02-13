@@ -16,7 +16,6 @@ jobs:
       - name: Morse Utils- Build
         run: |
           cd morse_utils 
-          export RUSTFLAGS="-D warnings"
           cargo build
 
       - name: Morse Utils- test
