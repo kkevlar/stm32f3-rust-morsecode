@@ -246,9 +246,8 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use heapless::Vec;
     use heapless::consts::*;
-
+    use heapless::Vec;
 
     #[test]
     fn test_calc_error_spoton() {

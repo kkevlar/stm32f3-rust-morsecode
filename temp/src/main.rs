@@ -364,18 +364,18 @@ fn poll_morse(
     convert(&intensities[..], &mut ttt, start_time).unwrap();
 
     let r = estimate_unit_time(&ttt, 5, 6);
-        let mut unwr = r.unwrap().item;
+    let mut unwr = r.unwrap().item;
 
-        let r: Vec<Scored<&MorseCandidate>, U16> = ttt
-            .iter()
-            .map(|tle| morse_utils::best_error(tle, unwr))
-            .filter_map(Result::ok)
-            .collect();
+    let r: Vec<Scored<&MorseCandidate>, U16> = ttt
+        .iter()
+        .map(|tle| morse_utils::best_error(tle, unwr))
+        .filter_map(Result::ok)
+        .collect();
 
-        let r: Vec<morse_utils::Morse, U256> = r
-            .into_iter()
-            .map(|s| morse_utils::mc_to_morse(s.item))
-            .collect();
+    let r: Vec<morse_utils::Morse, U256> = r
+        .into_iter()
+        .map(|s| morse_utils::mc_to_morse(s.item))
+        .collect();
 }
 
 fn setup_input(rcc: &aux9::rcc::RegisterBlock, gpioa: &aux9::gpioa::RegisterBlock) {
