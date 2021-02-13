@@ -332,7 +332,7 @@ mod stuff {
 }
 
 fn poll_morse(
-    mut start_time: u16,
+    mut start_time: i64,
     tim6: &aux9::tim6::RegisterBlock,
     gpioa: &aux9::gpioa::RegisterBlock,
     poll_delay: u16,
@@ -355,8 +355,12 @@ fn poll_morse(
         ));
 
         delay(tim6, poll_delay);
-        start_time += poll_delay;
+        start_time += poll_delay as i64;
     }
+
+    let mut ttt: Vec<morse_utils::TimedLightEvent, U1024> = Vec::new();
+
+    morse_utils::convert(&intensities[..], &mut ttt, 0).unwrap();
 }
 
 fn setup_input(rcc: &aux9::rcc::RegisterBlock, gpioa: &aux9::gpioa::RegisterBlock) {
