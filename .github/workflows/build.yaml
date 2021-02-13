@@ -1,0 +1,33 @@
+name: Build
+
+on: [push, pull_request]
+
+jobs:
+  build:
+    runs-on: ubuntu-20.04
+
+    steps:
+      - uses: actions/checkout@v1
+
+      - name: Install rust
+        run: |
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+          rustup target add thumbv7em-none-eabihf
+
+      - name: Morse Utils- Build
+        run: |
+          cd morse_utils 
+          cargo build
+
+      - name: Morse Utils- test
+        run: |
+          cd morse_utils 
+          cargo test
+
+      - name: Embedded Build
+        run: |
+          cd temp 
+          cargo build
+          cargo build --target thumbv7em-none-eabihf
+ 
+        
