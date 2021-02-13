@@ -1,22 +1,5 @@
 #![no_std]
 
-#[deny(bad-style,
-       const-err,
-       dead-code,
-       improper-ctypes,
-       non-shorthand-field-patterns,
-       no-mangle-generic-items,
-       overflowing-literals,
-       path-statements ,
-       patterns-in-fns-without-body,
-       private-in-public,
-       unconditional-recursion,
-       unused,
-       unused-allocation,
-       unused-comparisons,
-       unused-parens,
-       while-true)]
-
 // macro_rules! hashmap {
 //     ($( $key: expr => $val: expr ),*) => {{
 //          let mut map = heapless::FnvIndexMap::new();
@@ -263,6 +246,9 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use heapless::Vec;
+    use heapless::consts::*;
+
 
     #[test]
     fn test_calc_error_spoton() {
