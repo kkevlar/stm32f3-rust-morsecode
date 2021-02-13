@@ -89,17 +89,6 @@ pub fn calc_error(
     }
 }
 
-fn make_score(
-    event: &TimedLightEvent,
-    mc: &'static MorseCandidate,
-    unit_millis: Time,
-) -> Option<Scored<&'static MorseCandidate>> {
-    Some(Scored {
-        item: mc,
-        score: calc_error(event, mc, unit_millis)?,
-    })
-}
-
 fn poisoned_min<T>(
     min_so_far: Option<Result<Scored<T>, MorseErr>>,
     next: Result<Scored<T>, MorseErr>,
@@ -185,12 +174,6 @@ pub fn estimate_unit_time(
         .unwrap_or(Err(MorseErr::TooFewTLEs))
 }
 
-fn fill_unit_time_possibilities() {
-    for i in 1..100 {
-        let i: f32 = i as f32;
-    }
-}
-
 pub fn calc_digital_cutoffs(
     intensities: &[(Time, LightIntensity)],
 ) -> Result<(LightIntensity, LightIntensity), core::num::TryFromIntError> {
@@ -250,7 +233,7 @@ where
                     duration: *time - start_time,
                 };
 
-                light_states.push(tle);
+                light_states.push(tle).unwrap();
                 curr_light_state = next_light_state;
                 start_time = *time;
             }
