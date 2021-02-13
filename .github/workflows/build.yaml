@@ -9,14 +9,14 @@ jobs:
     steps:
       - uses: actions/checkout@v1
 
-      - name: Install rust
+      - name: Setup rust
         run: |
-          # curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
           rustup target add thumbv7em-none-eabihf
 
       - name: Morse Utils- Build
         run: |
           cd morse_utils 
+          export RUSTFLAGS="-D warnings"
           cargo build
 
       - name: Morse Utils- test
@@ -29,5 +29,15 @@ jobs:
           cd temp 
           cargo build
           cargo build --target thumbv7em-none-eabihf
+
+      - name: Format Check
+        run: |
+          cd morse_utils 
+          cargo fmt
+          cd ..
+          cd temp
+          cargo fmt
+          cd ..
+          git diff --quiet HEAD
  
         
