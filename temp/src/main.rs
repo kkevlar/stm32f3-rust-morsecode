@@ -3,6 +3,8 @@
 
 use aux9::{entry, tim6};
 
+pub mod buster;
+
 #[inline(never)]
 fn delay(tim6: &tim6::RegisterBlock, ms: u16) {
     // Set the timer to go off in `ms` ticks
@@ -19,7 +21,7 @@ fn delay(tim6: &tim6::RegisterBlock, ms: u16) {
     tim6.sr.modify(|_, w| w.uif().clear_bit());
 }
 
-mod buster {
+mod stuff {
     use core::convert::TryFrom;
     use heapless::consts::*;
     use heapless::FnvIndexMap;
@@ -250,100 +252,96 @@ mod buster {
         output
     }
 
-    pub fn buster(leds: &mut aux9::Leds) -> bool {
-        let mut vb: Vec<u8, U8> = Vec::new();
-        let mut vc: Vec<u8, U64> = Vec::new();
+    // pub fn buster(leds: &mut aux9::Leds) -> bool {
+    //     let mut vb: Vec<u8, U8> = Vec::new();
+    //     let mut vc: Vec<u8, U64> = Vec::new();
 
-        let mut ttt: Vec<TimedLightEvent, U8> = Vec::new();
+    //     let mut ttt: Vec<TimedLightEvent, U8> = Vec::new();
 
-        convert(&myint[..], &mut ttt, 0).unwrap();
+    //     convert(&myint[..], &mut ttt, 0).unwrap();
 
-        let r = estimate_unit_time(&ttt, 5, 6);
-        let mut unwr = r.unwrap().item;
+    //     let r = estimate_unit_time(&ttt, 5, 6);
+    //     let mut unwr = r.unwrap().item;
 
-        let r: Vec<Scored<&MorseCandidate>, U16> = ttt
-            .iter()
-            .map(|tle| morse_utils::best_error(tle, unwr))
-            .filter_map(Result::ok)
-            .collect();
+    //     let r: Vec<Scored<&MorseCandidate>, U16> = ttt
+    //         .iter()
+    //         .map(|tle| morse_utils::best_error(tle, unwr))
+    //         .filter_map(Result::ok)
+    //         .collect();
 
-        let r: Vec<morse_utils::Morse, U256> = r
-            .into_iter()
-            .map(|s| morse_utils::mc_to_morse(s.item))
-            .collect();
+    //     let r: Vec<morse_utils::Morse, U256> = r
+    //         .into_iter()
+    //         .map(|s| morse_utils::mc_to_morse(s.item))
+    //         .collect();
 
-        let mut r = heapless_reverse(r);
+    //     let mut r = heapless_reverse(r);
 
-        for (i, b) in r.iter().enumerate() {
-            if *b != Morse::Error {
-                if i % 2 == 0 {
-                    leds[0].on();
-                } else {
-                    leds[0].off();
-                }
-            } else {
-                if i % 2 == 0 {
-                    leds[1].on();
-                } else {
-                    leds[1].off();
-                }
-            }
-        }
+    //     for (i, b) in r.iter().enumerate() {
+    //         if *b != Morse::Error {
+    //             if i % 2 == 0 {
+    //                 leds[0].on();
+    //             } else {
+    //                 leds[0].off();
+    //             }
+    //         } else {
+    //             if i % 2 == 0 {
+    //                 leds[1].on();
+    //             } else {
+    //                 leds[1].off();
+    //             }
+    //         }
+    //     }
 
-        loop {
-            let c = letterify(&mut r);
-            leds[0].off();
-            if c == '?' {
-                leds[1].on();
-            }
-        }
+    //     loop {
+    //         let c = letterify(&mut r);
+    //         leds[0].off();
+    //         if c == '?' {
+    //             leds[1].on();
+    //         }
+    //     }
 
-        vb.push(90);
-        vc.push(90);
-        vc.push(0);
+    //     vb.push(90);
+    //     vc.push(90);
+    //     vc.push(0);
 
-        if lookup("01") == 'a' {
-            leds[0].on();
-        } else {
-            leds[0].off();
-        }
+    //     if lookup("01") == 'a' {
+    //         leds[0].on();
+    //     } else {
+    //         leds[0].off();
+    //     }
 
-        //         if vb[0] == vc[0]
-        //         {
-        //         if v.len() > 2
-        //         {
-        //             false
-        //         }
-        //         else
-        //         {
-        //            true
-        //         }
-        //     }
-        //     else
-        //     {
-        // false
-        //     }
-        // }
+    //     //         if vb[0] == vc[0]
+    //     //         {
+    //     //         if v.len() > 2
+    //     //         {
+    //     //             false
+    //     //         }
+    //     //         else
+    //     //         {
+    //     //            true
+    //     //         }
+    //     //     }
+    //     //     else
+    //     //     {
+    //     // false
+    //     //     }
+    //     // }
 
-        true
-    }
+    //     true
+    // }
 }
 
-fn setup_input(rcc: &RegisterBlock, gpioa: &RegisterBlock) {
-    // Allow GPIOA
-    rcc.ahbenr.modify(|_, w| w.iopaen().set_bit());
-
-    gpioa.moder.modify(|_, w| w.moder0().input());
-
-    unsafe {
-        gpioa.pupdr.modify(|_, w| w.pupdr0().bits(2));
-    }
-}
-
-fn poll_morse(mut start_time: u16, tim6: &RegisterBlock, poll_delay: u16) {
+fn poll_morse(
+    mut start_time: u16,
+    tim6: &aux9::tim6::RegisterBlock,
+    gpioa: &aux9::gpioa::RegisterBlock,
+    poll_delay: u16,
+) {
     let count = 1000 / poll_delay;
 
-    let intensities: Vec<_, U1024> = Vec::new();
+    use heapless::consts::*;
+    use heapless::Vec;
+    let mut intensities: Vec<_, U1024> = Vec::new();
 
     for i in 0..count {
         let bit: bool = gpioa.idr.read().idr0().bit();
@@ -359,6 +357,19 @@ fn poll_morse(mut start_time: u16, tim6: &RegisterBlock, poll_delay: u16) {
         delay(tim6, poll_delay);
         start_time += poll_delay;
     }
+}
+
+fn setup_input(rcc: &aux9::rcc::RegisterBlock, gpioa: &aux9::gpioa::RegisterBlock) {
+    // Allow GPIOA
+    rcc.ahbenr.modify(|_, w| w.iopaen().set_bit());
+
+    gpioa.moder.modify(|_, w| w.moder0().input());
+
+    unsafe {
+        gpioa.pupdr.modify(|_, w| w.pupdr0().bits(2));
+    }
+
+    buster::be_busted().unwrap();
 }
 
 #[entry]
@@ -381,7 +392,7 @@ fn main() -> ! {
 
     setup_input(rcc, gpioa);
 
-    poll_morse();
+    // stuff::poll_morse();
 
     let ms = 50;
     loop {

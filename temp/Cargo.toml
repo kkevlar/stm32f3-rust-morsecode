@@ -8,7 +8,6 @@ version = "0.1.0"
 aux9 = { path = "auxiliary" }
 cortex-m-rt = "0.6.3"
 heapless = "0.6.0"
-anyhow = { version = "1.0", default-features = false }
 
 [dependencies.morse_utils]
 path = "../morse_utils"

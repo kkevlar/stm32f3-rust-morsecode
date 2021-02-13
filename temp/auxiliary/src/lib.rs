@@ -8,7 +8,7 @@ extern crate panic_itm; // panic handler
 pub use cortex_m::asm::{bkpt, nop};
 pub use cortex_m_rt::entry;
 pub use f3::{
-    hal::stm32f30x::{rcc, tim6},
+    hal::stm32f30x::{rcc, tim6, gpioa},
     led::Leds,
 };
 
@@ -19,6 +19,7 @@ use f3::hal::{
 
 pub fn init() -> (
     Leds,
+    &'static gpioa::RegisterBlock,
     &'static rcc::RegisterBlock,
     &'static tim6::RegisterBlock,
 ) {
