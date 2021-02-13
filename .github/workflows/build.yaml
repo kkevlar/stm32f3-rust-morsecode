@@ -11,7 +11,7 @@ jobs:
 
       - name: Install rust
         run: |
-          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+          # curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
           rustup target add thumbv7em-none-eabihf
 
       - name: Morse Utils- Build
