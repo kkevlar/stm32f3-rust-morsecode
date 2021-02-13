@@ -329,41 +329,35 @@ mod buster {
     }
 }
 
-fn setup_input(rcc : &RegisterBlock, gpioa: &RegisterBlock)
-{
+fn setup_input(rcc: &RegisterBlock, gpioa: &RegisterBlock) {
     // Allow GPIOA
     rcc.ahbenr.modify(|_, w| w.iopaen().set_bit());
 
-    gpioa.moder.modify(|_, w| 
-        w.moder0().input()
-    );
+    gpioa.moder.modify(|_, w| w.moder0().input());
 
-    unsafe{
-    gpioa.pupdr.modify(|_, w| 
-        w.pupdr0().bits(2)
-    );
+    unsafe {
+        gpioa.pupdr.modify(|_, w| w.pupdr0().bits(2));
+    }
 }
 
-fn poll_morse(mut start_time : u16, tim6: &RegisterBlock, poll_delay : u16)
-{
+fn poll_morse(mut start_time: u16, tim6: &RegisterBlock, poll_delay: u16) {
     let count = 1000 / poll_delay;
-    
-    let intensities : Vec<_, U1024> = Vec::new();
 
-    for i in 0..count
-    {
- let bit : bool = gpioa.idr.read().idr0().bit();
+    let intensities: Vec<_, U1024> = Vec::new();
 
- intensities.push(( start_time,
- match bit
- {
-false => 100,
-true => 1000,
- }));
+    for i in 0..count {
+        let bit: bool = gpioa.idr.read().idr0().bit();
 
- delay(tim6, poll_delay);
- start_time += poll_delay;
+        intensities.push((
+            start_time,
+            match bit {
+                false => 100,
+                true => 1000,
+            },
+        ));
 
+        delay(tim6, poll_delay);
+        start_time += poll_delay;
     }
 }
 
