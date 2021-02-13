@@ -1,12 +1,12 @@
 #![no_std]
 
-macro_rules! hashmap {
-    ($( $key: expr => $val: expr ),*) => {{
-         let mut map = heapless::FnvIndexMap::new();
-         $( map.insert($key, $val); )*
-         map
-    }}
-}
+// macro_rules! hashmap {
+//     ($( $key: expr => $val: expr ),*) => {{
+//          let mut map = heapless::FnvIndexMap::new();
+//          $( map.insert($key, $val); )*
+//          map
+//     }}
+// }
 
 #[derive(PartialEq, Eq, Copy, Clone, Debug)]
 pub enum Morse {
@@ -20,9 +20,6 @@ pub enum Morse {
 
 extern crate heapless;
 
-use core::{cmp::min, convert::TryFrom};
-use heapless::consts::*;
-use heapless::FnvIndexMap;
 use heapless::Vec;
 
 pub type Time = i64;

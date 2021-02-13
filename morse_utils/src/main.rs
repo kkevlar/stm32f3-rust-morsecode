@@ -3,13 +3,13 @@ use heapless::Vec;
 
 use morse_utils::*;
 
-macro_rules! hashmap {
-    ($( $key: expr => $val: expr ),*) => {{
-         let mut map = ::std::collections::HashMap::new();
-         $( map.insert($key, $val); )*
-         map
-    }}
-}
+// macro_rules! hashmap {
+//     ($( $key: expr => $val: expr ),*) => {{
+//          let mut map = ::std::collections::HashMap::new();
+//          $( map.insert($key, $val); )*
+//          map
+//     }}
+// }
 
 // fn split_slice<'a, T>(sl: &'a [T], on: &T) -> std::vec::Vec<std::vec::Vec<&'a T>>
 // where
@@ -38,17 +38,6 @@ const test_durations: [i64; 52] = [
     700, 300, 100, 100, 100, 100, 100, 100, 300, 300, 100, 300, 100, 300, 300, 100, 100, 100, 100,
     300, 300, 300, 300, 300, 300, 100, 300, 300, 300, 100, 100, 700, 300, 100, 300, 100, 300, 300,
     300, 100, 300, 100, 300, 300, 100, 100, 100, 100, 300, 100, 100, 700,
-];
-const myint: [(Time, LightIntensity); 9] = [
-    (5, 50),
-    (10, 50),
-    (15, 500),
-    (20, 50),
-    (25, 500),
-    (30, 50),
-    (35, 500),
-    (40, 50),
-    (60, 51),
 ];
 
 fn helper_fill_events_slice<T>(durations: &[i64], vec: &mut Vec<TimedLightEvent, T>)
