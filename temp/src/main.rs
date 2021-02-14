@@ -333,6 +333,7 @@ mod stuff {
 
 enum Busted {
     CantPollThatLong,
+    ConvertFailed(core::num::TryFromIntError),
 }
 
 fn poll_morse(
@@ -347,7 +348,6 @@ fn poll_morse(
     use heapless::Vec;
     let mut intensities: Vec<_, U64> = Vec::new();
 
-    // TODO add breakpoint here
     if intensities.capacity() <= count as usize {
         Err(Busted::CantPollThatLong)
     } else {
@@ -367,9 +367,10 @@ fn poll_morse(
         }
 
         use morse_utils::*;
-        let mut ttt: Vec<TimedLightEvent, U128> = Vec::new();
+        let mut ttt: Vec<TimedLightEvent, U64> = Vec::new();
 
-        convert(&intensities[..], &mut ttt, start_time).unwrap();
+        // TODO add breakpoint here
+        convert(&intensities[..], &mut ttt, start_time).map_err(|e| Busted::ConvertFailed(e))?;
 
         let r = estimate_unit_time(&ttt, 5, 6);
         let unit_time = r.unwrap().item;
