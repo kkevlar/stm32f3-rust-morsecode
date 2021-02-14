@@ -331,58 +331,67 @@ mod stuff {
     // }
 }
 
+enum Busted {
+    CantPollThatLong,
+}
+
 fn poll_morse(
     mut start_time: i64,
     tim6: &aux9::tim6::RegisterBlock,
     gpioa: &aux9::gpioa::RegisterBlock,
     poll_delay: u16,
-) {
-    let count = 1000 / poll_delay;
+) -> Result<(), Busted> {
+    let count = 4000 / poll_delay;
 
     use heapless::consts::*;
     use heapless::Vec;
     let mut intensities: Vec<_, U128> = Vec::new();
 
-    for i in 0..count {
-        let bit: bool = gpioa.idr.read().idr0().bit();
+    if U128 <= count {
+        Err(Busted::CantPollThatLong)
+    } else {
+        for i in 0..count {
+            let bit: bool = gpioa.idr.read().idr0().bit();
 
-        intensities.push((
-            start_time,
-            match bit {
-                false => 100,
-                true => 1000,
-            },
-        ));
+            intensities.push((
+                start_time,
+                match bit {
+                    false => 100,
+                    true => 1000,
+                },
+            ));
 
-        delay(tim6, poll_delay);
-        start_time += poll_delay as i64;
-    }
+            delay(tim6, poll_delay);
+            start_time += poll_delay as i64;
+        }
 
-    use morse_utils::*;
-    let mut ttt: Vec<TimedLightEvent, U128> = Vec::new();
+        use morse_utils::*;
+        let mut ttt: Vec<TimedLightEvent, U128> = Vec::new();
 
-    convert(&intensities[..], &mut ttt, start_time).unwrap();
+        convert(&intensities[..], &mut ttt, start_time).unwrap();
 
-    let r = estimate_unit_time(&ttt, 5, 6);
-    let unit_time = r.unwrap().item;
+        let r = estimate_unit_time(&ttt, 5, 6);
+        let unit_time = r.unwrap().item;
 
-    let r: Vec<Scored<&MorseCandidate>, U16> = ttt
-        .iter()
-        .map(|tle| morse_utils::best_error(tle, unit_time))
-        .filter_map(Result::ok)
-        .collect();
+        let r: Vec<Scored<&MorseCandidate>, U16> = ttt
+            .iter()
+            .map(|tle| morse_utils::best_error(tle, unit_time))
+            .filter_map(Result::ok)
+            .collect();
 
-    let r: Vec<morse_utils::Morse, U16> = r
-        .into_iter()
-        .map(|s| morse_utils::mc_to_morse(s.item))
-        .collect();
+        let r: Vec<morse_utils::Morse, U16> = r
+            .into_iter()
+            .map(|s| morse_utils::mc_to_morse(s.item))
+            .collect();
 
-    let mut r = stuff::heapless_reverse(r);
+        let mut r = stuff::heapless_reverse(r);
 
-    loop {
-        let c = stuff::letterify(&mut r);
-        if c == '?' {
-            break;
+        loop {
+            let c = stuff::letterify(&mut r);
+            if c == '?' {
+                break;
+            }
+            OK(())
         }
     }
 }
