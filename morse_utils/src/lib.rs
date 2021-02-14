@@ -233,7 +233,7 @@ pub fn calc_digital_cutoffs(
 }
 
 pub enum ConvertErrs {
-    CalcDigitalCutoffsFailed(core::num::TryFromIntError),
+    CalcDigital(CalcDigitalCutoffsErrs),
     TooSmallCapacity,
 }
 
@@ -250,7 +250,7 @@ where
     let mut start_time = start_time;
 
     let (low_cut, high_cut) =
-        calc_digital_cutoffs(intensities).map_err(|e| ConvertErrs::CalcDigitalCutoffsFailed(e))?;
+        calc_digital_cutoffs(intensities).map_err(|e| ConvertErrs::CalcDigital(e))?;
 
     for (time, light) in intensities.iter() {
         let next_light_state = match (curr_light_state, light) {
