@@ -430,18 +430,26 @@ fn main() -> ! {
     setup_input(rcc, gpioa);
 
     // stuff::poll_morse();
-    poll_morse(0, tim6, gpioa, 10);
+    let res = poll_morse(0, tim6, gpioa, 10);
 
-    // let ms = 50;
-    // loop {
-    //     for curr in 0..8 {
-    //         let next = (curr + 1) % 8;
+    if res.is_err() {
+        leds[2].on();
+    }
 
-    //         leds[next].on();
-    //         delay(tim6, ms);
-    //         leds[curr].off();
-    //         delay(tim6, ms);
-    //     }
-    // }
-    loop {}
+    match res {
+        Ok(_) => leds[0].on(),
+        Err(_) => leds[0].off(),
+    }
+
+    let ms = 50;
+    loop {
+        for curr in 0..8 {
+            let next = (curr + 1) % 8;
+
+            leds[next].on();
+            delay(tim6, ms);
+            leds[curr].off();
+            delay(tim6, ms);
+        }
+    }
 }
