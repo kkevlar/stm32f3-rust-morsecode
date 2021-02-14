@@ -341,7 +341,7 @@ fn poll_morse(
 
     use heapless::consts::*;
     use heapless::Vec;
-    let mut intensities: Vec<_, U1024> = Vec::new();
+    let mut intensities: Vec<_, U128> = Vec::new();
 
     for i in 0..count {
         let bit: bool = gpioa.idr.read().idr0().bit();
