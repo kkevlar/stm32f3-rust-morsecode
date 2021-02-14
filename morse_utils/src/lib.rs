@@ -7,6 +7,7 @@
 //          map
 //     }}
 // }
+    use core::convert::TryFrom;
 
 #[derive(PartialEq, Eq, Copy, Clone, Debug)]
 pub enum Morse {
@@ -21,7 +22,7 @@ pub enum Morse {
 extern crate heapless;
 
 use core::{
-    array::TryFromSliceError, convert::TryInto, intrinsics::truncf32, num::TryFromIntError,
+    array::TryFromSliceError, convert::TryInto, num::TryFromIntError,
 };
 
 use heapless::Vec;
@@ -225,8 +226,8 @@ pub fn calc_digital_cutoffs(
         let high_cut = lows_avg + ((3 * diff) / 4);
 
         Ok((
-            high_cut.try_into().map_err(|e| TooBig(e))?,
-            high_cut.try_into().map_err(|e| TooBig(e))?,
+            u16::try_from(low_cut).map_err(|e| TooBig(e))?,
+            u16::try_from(high_cut).map_err(|e| TooBig(e))?,
         ))
     }
 }
