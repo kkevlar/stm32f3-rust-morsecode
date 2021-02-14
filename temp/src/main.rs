@@ -342,12 +342,13 @@ fn poll_morse(
     gpioa: &aux9::gpioa::RegisterBlock,
     poll_delay: u16,
 ) -> Result<(), Busted> {
-    let count = 2000 / poll_delay;
+    let count = 3000 / poll_delay;
 
     use heapless::consts::*;
     use heapless::Vec;
     let mut intensities: Vec<_, U64> = Vec::new();
 
+        // TODO add breakpoint here
     if intensities.capacity() <= count as usize {
         Err(Busted::CantPollThatLong)
     } else {
@@ -372,7 +373,7 @@ fn poll_morse(
         // TODO add breakpoint here
         convert(&intensities[..], &mut ttt, start_time).map_err(|e| Busted::ConvertFailed(e))?;
 
-        let r = estimate_unit_time(&ttt, 5, 6);
+        let r = estimate_unit_time(&ttt, 200, 1500);
         let unit_time = r.unwrap().item;
 
         let r: Vec<Scored<&MorseCandidate>, U16> = ttt
@@ -432,9 +433,8 @@ fn main() -> ! {
     setup_input(rcc, gpioa);
 
     // stuff::poll_morse();
-    let res = poll_morse(0, tim6, gpioa, 50);
+    let res = poll_morse(0, tim6, gpioa, 100);
 
-    // TODO add breakpoint here
     if res.is_err() {
         leds[2].on();
     }

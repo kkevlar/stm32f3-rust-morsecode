@@ -162,16 +162,17 @@ pub fn estimate_unit_time(
     min_millis: Time,
     max_millis: Time,
 ) -> Result<Scored<Time>, MorseErr> {
+    let max = 20;
     // Iterate over possible unit times from 1 to 5000 ms
-    (min_millis..max_millis)
+    (0..max)
         // For each time, score it by summing the scores of the best candidate for each event
         .map(|ratio| {
-            // let ratio = ratio as f32;
-            // let ratio = ratio / 100f32;
-            // let plus = (max_millis - min_millis) as f32 * ratio;
-            // let plus = plus as Time;
-            // score_possible_unit_millis(min_millis + plus, timings)
-            score_possible_unit_millis(ratio, timings)
+            let ratio = ratio as f32;
+            let ratio = ratio / (max as f32);
+            let plus = (max_millis - min_millis) as f32 * ratio;
+            let plus = plus as Time;
+            score_possible_unit_millis(min_millis + plus, timings)
+            // score_possible_unit_millis(ratio, timings)
         })
         // Converge on the minimum scoring unit time
         .fold(None, poisoned_min)
@@ -386,7 +387,7 @@ mod tests {
                 item: 100,
                 score: 0
             },
-            estimate_unit_time(&timed_light_events, 0, 10000).unwrap()
+            estimate_unit_time(&timed_light_events, 0, 1000).unwrap()
         );
     }
 }
