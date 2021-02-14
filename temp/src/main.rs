@@ -341,7 +341,7 @@ fn poll_morse(
     gpioa: &aux9::gpioa::RegisterBlock,
     poll_delay: u16,
 ) -> Result<(), Busted> {
-    let count = 4000 / poll_delay;
+    let count = 2000 / poll_delay;
 
     use heapless::consts::*;
     use heapless::Vec;
@@ -431,7 +431,7 @@ fn main() -> ! {
     setup_input(rcc, gpioa);
 
     // stuff::poll_morse();
-    let res = poll_morse(0, tim6, gpioa, 10);
+    let res = poll_morse(0, tim6, gpioa, 50);
 
     // TODO add breakpoint here
     if res.is_err() {
