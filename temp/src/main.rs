@@ -196,7 +196,7 @@ mod stuff {
         ret
     }
 
-    fn letterify<S>(morse: &mut Vec<morse_utils::Morse, S>) -> char
+    pub fn letterify<S>(morse: &mut Vec<morse_utils::Morse, S>) -> char
     where
         S: heapless::ArrayLength<morse_utils::Morse>,
     {
@@ -238,7 +238,7 @@ mod stuff {
         }
     }
 
-    fn heapless_reverse<T, S>(mut input: Vec<T, S>) -> Vec<T, S>
+    pub fn heapless_reverse<T, S>(mut input: Vec<T, S>) -> Vec<T, S>
     where
         S: heapless::ArrayLength<T>,
     {
@@ -364,11 +364,11 @@ fn poll_morse(
     convert(&intensities[..], &mut ttt, start_time).unwrap();
 
     let r = estimate_unit_time(&ttt, 5, 6);
-    let mut unwr = r.unwrap().item;
+    let unit_time = r.unwrap().item;
 
     let r: Vec<Scored<&MorseCandidate>, U16> = ttt
         .iter()
-        .map(|tle| morse_utils::best_error(tle, unwr))
+        .map(|tle| morse_utils::best_error(tle, unit_time))
         .filter_map(Result::ok)
         .collect();
 
@@ -376,6 +376,15 @@ fn poll_morse(
         .into_iter()
         .map(|s| morse_utils::mc_to_morse(s.item))
         .collect();
+
+    let mut r = stuff::heapless_reverse(r);
+
+    loop {
+        let c = stuff::letterify(&mut r);
+        if c == '?' {
+            break;
+        }
+    }
 }
 
 fn setup_input(rcc: &aux9::rcc::RegisterBlock, gpioa: &aux9::gpioa::RegisterBlock) {
@@ -412,6 +421,7 @@ fn main() -> ! {
     setup_input(rcc, gpioa);
 
     // stuff::poll_morse();
+    poll_morse(0, tim6, gpioa, 10);
 
     let ms = 50;
     loop {
