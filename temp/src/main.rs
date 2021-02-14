@@ -342,7 +342,7 @@ fn poll_morse(
     gpioa: &aux9::gpioa::RegisterBlock,
     poll_delay: u16,
 ) -> Result<(), Busted> {
-    let count = 3000 / poll_delay;
+    let count = 4000 / poll_delay;
 
     use heapless::consts::*;
     use heapless::Vec;
@@ -391,7 +391,7 @@ fn poll_morse(
         let mut count = 0;
         loop {
             let c = stuff::letterify(&mut r);
-        // TODO add breakpoint here
+            // TODO add breakpoint here
             if c == '?' {
                 count += 1;
             }
@@ -447,6 +447,8 @@ fn main() -> ! {
         Ok(_) => leds[0].on(),
         Err(_) => leds[0].off(),
     }
+
+    loop {}
 
     let ms = 50;
     loop {
