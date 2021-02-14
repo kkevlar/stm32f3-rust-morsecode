@@ -347,6 +347,7 @@ fn poll_morse(
     use heapless::Vec;
     let mut intensities: Vec<_, U128> = Vec::new();
 
+    // TODO add breakpoint here
     if intensities.capacity() <= count as usize {
         Err(Busted::CantPollThatLong)
     } else {
@@ -432,6 +433,7 @@ fn main() -> ! {
     // stuff::poll_morse();
     let res = poll_morse(0, tim6, gpioa, 10);
 
+    // TODO add breakpoint here
     if res.is_err() {
         leds[2].on();
     }
