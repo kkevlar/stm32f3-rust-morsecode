@@ -20,7 +20,9 @@ pub enum Morse {
 
 extern crate heapless;
 
-use core::{array::TryFromSliceError, num::TryFromIntError};
+use core::{
+    array::TryFromSliceError, convert::TryInto, intrinsics::truncf32, num::TryFromIntError,
+};
 
 use heapless::Vec;
 
@@ -176,13 +178,25 @@ pub fn estimate_unit_time(
         .unwrap_or(Err(MorseErr::TooFewTLEs))
 }
 
+pub enum CalcDigitalCutoffsErrs {
+    TooBig(core::num::TryFromIntError),
+    NoIntensities,
+    NoLows,
+    NoHighs,
+}
+
 pub fn calc_digital_cutoffs(
     intensities: &[(Time, LightIntensity)],
-) -> Result<(LightIntensity, LightIntensity), core::num::TryFromIntError> {
+) -> Result<(LightIntensity, LightIntensity), CalcDigitalCutoffsErrs> {
+    use CalcDigitalCutoffsErrs::*;
     let mut intensity_sum: u32 = 0;
 
     for (_, li) in intensities {
         intensity_sum += *li as u32;
+    }
+
+    if intensities.len() == 0 {
+        Err(NoIntensities)?
     }
 
     let intensity_avg: u32 = intensity_sum / (intensities.len() as u32);
@@ -198,14 +212,23 @@ pub fn calc_digital_cutoffs(
         }
     }
 
-    let lows_avg = lows.1 / lows.0;
-    let highs_avg = highs.1 / highs.0;
+    if lows.0 == 0 {
+        Err(NoLows)
+    } else if highs.0 == 0 {
+        Err(NoHighs)
+    } else {
+        let lows_avg = lows.1 / lows.0;
+        let highs_avg = highs.1 / highs.0;
 
-    let diff = highs_avg - lows_avg;
-    let low_cut = lows_avg + (diff / 4);
-    let high_cut = lows_avg + ((3 * diff) / 4);
+        let diff = highs_avg - lows_avg;
+        let low_cut = lows_avg + (diff / 4);
+        let high_cut = lows_avg + ((3 * diff) / 4);
 
-    Ok((low_cut as u16, high_cut as u16))
+        Ok((
+            high_cut.try_into().map_err(|e| TooBig(e))?,
+            high_cut.try_into().map_err(|e| TooBig(e))?,
+        ))
+    }
 }
 
 pub enum ConvertErrs {
