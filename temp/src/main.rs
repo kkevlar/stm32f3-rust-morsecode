@@ -347,7 +347,7 @@ fn poll_morse(
     use heapless::Vec;
     let mut intensities: Vec<_, U128> = Vec::new();
 
-    if U128 <= count {
+    if intensities.capacity() <= count as usize {
         Err(Busted::CantPollThatLong)
     } else {
         for i in 0..count {
@@ -391,8 +391,8 @@ fn poll_morse(
             if c == '?' {
                 break;
             }
-            OK(())
         }
+        Ok(())
     }
 }
 
