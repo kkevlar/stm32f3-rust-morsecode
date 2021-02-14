@@ -29,14 +29,14 @@ jobs:
           cargo build
           cargo build --target thumbv7em-none-eabihf
 
-      - name: Format Check
-        run: |
-          cd morse_utils 
-          cargo fmt
-          cd ..
-          cd temp
-          cargo fmt
-          cd ..
-          git diff --quiet HEAD
+      # - name: Format Check
+      #   run: |
+      #     cd morse_utils 
+      #     cargo fmt
+      #     cd ..
+      #     cd temp
+      #     cargo fmt
+      #     cd ..
+      #     git diff --quiet HEAD
  
         
