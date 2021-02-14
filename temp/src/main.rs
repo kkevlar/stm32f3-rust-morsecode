@@ -348,7 +348,7 @@ fn poll_morse(
     use heapless::Vec;
     let mut intensities: Vec<_, U64> = Vec::new();
 
-        // TODO add breakpoint here
+    // TODO add breakpoint here
     if intensities.capacity() <= count as usize {
         Err(Busted::CantPollThatLong)
     } else {
@@ -376,22 +376,26 @@ fn poll_morse(
         let r = estimate_unit_time(&ttt, 200, 1500);
         let unit_time = r.unwrap().item;
 
-        let r: Vec<Scored<&MorseCandidate>, U16> = ttt
+        let r: Vec<Scored<&MorseCandidate>, U32> = ttt
             .iter()
             .map(|tle| morse_utils::best_error(tle, unit_time))
             .filter_map(Result::ok)
             .collect();
 
-        let r: Vec<morse_utils::Morse, U16> = r
+        let r: Vec<morse_utils::Morse, U32> = r
             .into_iter()
             .map(|s| morse_utils::mc_to_morse(s.item))
             .collect();
 
         let mut r = stuff::heapless_reverse(r);
 
+        let mut count = 0;
         loop {
             let c = stuff::letterify(&mut r);
             if c == '?' {
+                count += 1;
+            }
+            if count > 10 {
                 break;
             }
         }
