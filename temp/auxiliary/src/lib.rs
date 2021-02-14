@@ -14,7 +14,7 @@ pub use f3::{
 
 use f3::hal::{
     prelude::*,
-    stm32f30x::{self, RCC, TIM6},
+    stm32f30x::{self, RCC, TIM6, GPIOA},
 };
 
 pub fn init() -> (
@@ -29,5 +29,5 @@ pub fn init() -> (
 
     let leds = Leds::new(p.GPIOE.split(&mut rcc.ahb));
 
-    (leds, unsafe{ &*p.GPIOA.split()}, unsafe { &*RCC::ptr() }, unsafe { &*TIM6::ptr() })
+    (leds,unsafe{&*GPIOA::ptr()}, unsafe { &*RCC::ptr() }, unsafe { &*TIM6::ptr() })
 }

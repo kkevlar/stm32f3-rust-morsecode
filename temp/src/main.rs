@@ -397,7 +397,7 @@ fn setup_input(rcc: &aux9::rcc::RegisterBlock, gpioa: &aux9::gpioa::RegisterBloc
         gpioa.pupdr.modify(|_, w| w.pupdr0().bits(2));
     }
 
-    buster::be_busted().unwrap();
+    // buster::be_busted().unwrap();
 }
 
 #[entry]
