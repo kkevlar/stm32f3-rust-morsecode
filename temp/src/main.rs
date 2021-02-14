@@ -345,7 +345,7 @@ fn poll_morse(
 
     use heapless::consts::*;
     use heapless::Vec;
-    let mut intensities: Vec<_, U128> = Vec::new();
+    let mut intensities: Vec<_, U32> = Vec::new();
 
     // TODO add breakpoint here
     if intensities.capacity() <= count as usize {
