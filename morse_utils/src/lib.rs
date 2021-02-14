@@ -20,6 +20,8 @@ pub enum Morse {
 
 extern crate heapless;
 
+use core::{array::TryFromSliceError, num::TryFromIntError};
+
 use heapless::Vec;
 
 pub type Time = i64;
@@ -206,11 +208,16 @@ pub fn calc_digital_cutoffs(
     Ok((low_cut as u16, high_cut as u16))
 }
 
+pub enum ConvertErrs {
+    CalcDigitalCutoffsFailed(core::num::TryFromIntError),
+    TooSmallCapacity,
+}
+
 pub fn convert<C>(
     intensities: &[(Time, LightIntensity)],
     light_states: &mut Vec<TimedLightEvent, C>,
     start_time: Time,
-) -> Result<(), core::num::TryFromIntError>
+) -> Result<(), ConvertErrs>
 where
     C: heapless::ArrayLength<TimedLightEvent>,
 {
@@ -218,7 +225,8 @@ where
     let mut curr_light_state = Dark;
     let mut start_time = start_time;
 
-    let (low_cut, high_cut) = calc_digital_cutoffs(intensities)?;
+    let (low_cut, high_cut) =
+        calc_digital_cutoffs(intensities).map_err(|e| ConvertErrs::CalcDigitalCutoffsFailed(e))?;
 
     for (time, light) in intensities.iter() {
         let next_light_state = match (curr_light_state, light) {
@@ -233,7 +241,9 @@ where
                     duration: *time - start_time,
                 };
 
-                light_states.push(tle).unwrap();
+                light_states
+                    .push(tle)
+                    .map_err(|_| ConvertErrs::TooSmallCapacity)?;
                 curr_light_state = next_light_state;
                 start_time = *time;
             }
