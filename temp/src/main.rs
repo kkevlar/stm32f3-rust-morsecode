@@ -369,8 +369,8 @@ fn poll_morse(
         use morse_utils::*;
         let mut ttt: Vec<TimedLightEvent, U64> = Vec::new();
 
-        convert(&intensities[..], &mut ttt, start_time).map_err(|e| Busted::ConvertFailed(e))?;
         // TODO add breakpoint here
+        convert(&intensities[..], &mut ttt, start_time).map_err(|e| Busted::ConvertFailed(e))?;
 
         let r = estimate_unit_time(&ttt, 5, 6);
         let unit_time = r.unwrap().item;
