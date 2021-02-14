@@ -359,7 +359,7 @@ fn poll_morse(
     }
 
     use morse_utils::*;
-    let mut ttt: Vec<TimedLightEvent, U1024> = Vec::new();
+    let mut ttt: Vec<TimedLightEvent, U128> = Vec::new();
 
     convert(&intensities[..], &mut ttt, start_time).unwrap();
 
@@ -372,7 +372,7 @@ fn poll_morse(
         .filter_map(Result::ok)
         .collect();
 
-    let r: Vec<morse_utils::Morse, U256> = r
+    let r: Vec<morse_utils::Morse, U16> = r
         .into_iter()
         .map(|s| morse_utils::mc_to_morse(s.item))
         .collect();
