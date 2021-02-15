@@ -7,7 +7,6 @@
 //          map
 //     }}
 // }
-    use core::convert::TryFrom;
 
 #[derive(PartialEq, Eq, Copy, Clone, Debug)]
 pub enum Morse {
@@ -21,9 +20,7 @@ pub enum Morse {
 
 extern crate heapless;
 
-use core::{
-    array::TryFromSliceError, convert::TryInto, num::TryFromIntError,
-};
+use core::{array::TryFromSliceError, convert::TryFrom, num::TryFromIntError};
 
 use heapless::Vec;
 
