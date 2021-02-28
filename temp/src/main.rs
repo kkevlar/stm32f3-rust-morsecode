@@ -342,7 +342,7 @@ fn poll_morse(
     gpioa: &aux9::gpioa::RegisterBlock,
     poll_delay: u16,
 ) -> Result<(), Busted> {
-    let count = 4000 / poll_delay;
+    let count = 3001 / poll_delay;
 
     use heapless::consts::*;
     use heapless::Vec;

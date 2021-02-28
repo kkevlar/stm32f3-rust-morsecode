@@ -20,9 +20,12 @@ pub enum Morse {
 
 extern crate heapless;
 
-use core::{array::TryFromSliceError, convert::TryFrom, num::TryFromIntError};
+use core::convert::TryFrom;
 
+use heapless::spsc::Producer;
+use heapless::spsc::Queue;
 use heapless::Vec;
+use heapless::{spsc::Consumer, ArrayLength};
 
 pub type Time = i64;
 pub type LightIntensity = u16;
@@ -35,6 +38,7 @@ pub enum LightState {
 
 #[derive(PartialEq, Eq, Copy, Clone, Debug)]
 pub enum MorseErr {
+    BestErrorBug,
     TooFewTLEs,
 }
 
@@ -43,6 +47,11 @@ pub struct Scored<T> {
     pub item: T,
     pub score: i64,
 }
+#[derive(PartialEq, Eq, Copy, Clone, Debug)]
+pub struct SampledLightIntensity {
+    pub intensity: LightIntensity,
+    pub sample_time: Time,
+}
 
 #[derive(PartialEq, Eq, Copy, Clone, Debug)]
 pub struct TimedLightEvent {
@@ -50,10 +59,22 @@ pub struct TimedLightEvent {
     pub duration: Time,
 }
 
+#[derive(PartialEq, Eq, Clone, Debug)]
+pub struct ConsumeSamplesInfo<C: heapless::ArrayLength<TimedLightEvent>> {
+    pub tles: Vec<TimedLightEvent, C>,
+    pub state: (Time, LightState),
+}
+
 #[derive(PartialEq, Eq, Copy, Clone, Debug)]
 pub struct MorseCandidate {
     pub light_state: LightState,
     pub units: Time,
+}
+
+#[derive(PartialEq, Eq, Copy, Clone, Debug)]
+pub struct IntensityCutoffs {
+    pub low: LightIntensity,
+    pub high: LightIntensity,
 }
 
 const MORSE_CANDIDATES: [MorseCandidate; 5] = [
@@ -78,6 +99,11 @@ const MORSE_CANDIDATES: [MorseCandidate; 5] = [
         units: 7,
     },
 ];
+
+pub fn tle_to_best_morse(tle: &TimedLightEvent, unit_millis: Time) -> Result<Morse, MorseErr> {
+    let c = best_error(tle, unit_millis)?;
+    Ok(mc_to_morse(c.item))
+}
 
 pub fn calc_error(
     event: &TimedLightEvent,
@@ -132,7 +158,7 @@ pub fn best_error(
             _ => (),
         };
     }
-    best.ok_or(MorseErr::TooFewTLEs)
+    best.ok_or(MorseErr::BestErrorBug)
 }
 
 pub fn score_possible_unit_millis(
@@ -159,13 +185,13 @@ pub fn estimate_unit_time(
     min_millis: Time,
     max_millis: Time,
 ) -> Result<Scored<Time>, MorseErr> {
-    let max = 20;
+    let splits = 20;
     // Iterate over possible unit times from 1 to 5000 ms
-    (0..max)
+    (0..splits)
         // For each time, score it by summing the scores of the best candidate for each event
         .map(|ratio| {
             let ratio = ratio as f32;
-            let ratio = ratio / (max as f32);
+            let ratio = ratio / (splits as f32);
             let plus = (max_millis - min_millis) as f32 * ratio;
             let plus = plus as Time;
             score_possible_unit_millis(min_millis + plus, timings)
@@ -186,7 +212,7 @@ pub enum CalcDigitalCutoffsErrs {
 
 pub fn calc_digital_cutoffs(
     intensities: &[(Time, LightIntensity)],
-) -> Result<(LightIntensity, LightIntensity), CalcDigitalCutoffsErrs> {
+) -> Result<IntensityCutoffs, CalcDigitalCutoffsErrs> {
     use CalcDigitalCutoffsErrs::*;
     let mut intensity_sum: u32 = 0;
 
@@ -223,56 +249,63 @@ pub fn calc_digital_cutoffs(
         let low_cut = lows_avg + (diff / 4);
         let high_cut = lows_avg + ((3 * diff) / 4);
 
-        Ok((
-            u16::try_from(low_cut).map_err(|e| TooBig(e))?,
-            u16::try_from(high_cut).map_err(|e| TooBig(e))?,
-        ))
+        Ok(IntensityCutoffs {
+            low: u16::try_from(low_cut).map_err(|e| TooBig(e))?,
+            high: u16::try_from(high_cut).map_err(|e| TooBig(e))?,
+        })
     }
 }
 
+#[derive(PartialEq, Eq, Copy, Clone, Debug)]
 pub enum ConvertErrs {
-    CalcDigital(CalcDigitalCutoffsErrs),
-    TooSmallCapacity,
+    BadQueueCode,
+    TooSmallOutgoingCapacity,
 }
 
-pub fn convert<C>(
-    intensities: &[(Time, LightIntensity)],
-    light_states: &mut Vec<TimedLightEvent, C>,
-    start_time: Time,
-) -> Result<(), ConvertErrs>
+pub fn intensities_to_tles<C>(
+    intensities: &mut Consumer<SampledLightIntensity, C, usize>,
+    init: (Time, LightState),
+    cuts: IntensityCutoffs,
+) -> Result<ConsumeSamplesInfo<C>, ConvertErrs>
 where
-    C: heapless::ArrayLength<TimedLightEvent>,
+    C: heapless::ArrayLength<SampledLightIntensity> + ArrayLength<TimedLightEvent>,
 {
+    use ConvertErrs::*;
     use LightState::*;
-    let mut curr_light_state = Dark;
-    let mut start_time = start_time;
+    let (mut start_time, mut curr_light_state) = init;
 
-    let (low_cut, high_cut) =
-        calc_digital_cutoffs(intensities).map_err(|e| ConvertErrs::CalcDigital(e))?;
+    let mut out_vec: Vec<_, C> = Vec::new();
 
-    for (time, light) in intensities.iter() {
+    while intensities.ready() {
+        let it: Option<SampledLightIntensity> = intensities.dequeue();
+        let SampledLightIntensity {
+            sample_time: time,
+            intensity: light,
+        } = it.ok_or(BadQueueCode)?;
+
         let next_light_state = match (curr_light_state, light) {
-            (Dark, x) if *x > high_cut => Some(Light),
-            (Light, x) if *x < low_cut => Some(Dark),
+            (Dark, x) if x > cuts.high => Some(Light),
+            (Light, x) if x < cuts.low => Some(Dark),
             _ => None,
         };
         match next_light_state {
             Some(next_light_state) => {
                 let tle = TimedLightEvent {
                     light_state: curr_light_state,
-                    duration: *time - start_time,
+                    duration: time - start_time,
                 };
 
-                light_states
-                    .push(tle)
-                    .map_err(|_| ConvertErrs::TooSmallCapacity)?;
+                out_vec.push(tle).map_err(|_| TooSmallOutgoingCapacity)?;
                 curr_light_state = next_light_state;
-                start_time = *time;
+                start_time = time;
             }
             _ => (),
         };
     }
-    Ok(())
+    Ok(ConsumeSamplesInfo {
+        tles: out_vec,
+        state: (start_time, curr_light_state),
+    })
 }
 
 #[cfg(test)]
@@ -280,6 +313,8 @@ mod tests {
     use super::*;
     use heapless::consts::*;
     use heapless::Vec;
+    extern crate std;
+    use std::println;
 
     #[test]
     fn test_calc_error_spoton() {
@@ -385,6 +420,116 @@ mod tests {
                 score: 0
             },
             estimate_unit_time(&timed_light_events, 0, 1000).unwrap()
+        );
+    }
+
+    #[test]
+    fn test_queue_convert() {
+        let my_intensities = [
+            (100, 0),
+            (100, 20),
+            (100, 40),
+            (900, 60),
+            (100, 120),
+            (900, 140),
+            (100, 160),
+            (900, 180),
+            (100, 200),
+            (900, 220),
+            (100, 240),
+            (100, 500),
+        ];
+
+        use heapless::spsc::Queue;
+
+        let mut sample_queue: Queue<_, U64, _> = Queue::new();
+        let results = my_intensities
+            .iter()
+            .map(|(i, t)| SampledLightIntensity {
+                sample_time: *t,
+                intensity: *i,
+            })
+            .try_for_each(|i| sample_queue.enqueue(i));
+
+        assert_eq!(true, results.is_ok());
+
+        let (mut consumer, mut producer) = sample_queue.split();
+
+        let popresult = intensities_to_tles(
+            &mut producer,
+            (0, LightState::Dark),
+            IntensityCutoffs {
+                low: 200,
+                high: 800,
+            },
+        )
+        .unwrap();
+
+        let rmorses: Result<Vec<_, U64>, _> = popresult
+            .tles
+            .iter()
+            .map(|t| tle_to_best_morse(t, 20))
+            .collect();
+        let mut morses = rmorses.unwrap();
+
+        consumer
+            .enqueue(SampledLightIntensity {
+                sample_time: 520,
+                intensity: 100,
+            })
+            .unwrap();
+        for i in 0..3 {
+            consumer
+                .enqueue(SampledLightIntensity {
+                    sample_time: 540 + (40 * i),
+                    intensity: 900,
+                })
+                .unwrap();
+            consumer
+                .enqueue(SampledLightIntensity {
+                    sample_time: 560 + (40 * i),
+                    intensity: 100,
+                })
+                .unwrap();
+        }
+
+        let popresult = intensities_to_tles(
+            &mut producer,
+            popresult.state,
+            IntensityCutoffs {
+                low: 200,
+                high: 800,
+            },
+        );
+
+        let rmorses: Result<Vec<_, U64>, _> = popresult
+            .unwrap()
+            .tles
+            .iter()
+            .map(|t| tle_to_best_morse(t, 20))
+            .collect();
+        let latemorses = rmorses.unwrap();
+        morses.extend_from_slice(&latemorses).unwrap();
+
+        use Morse::*;
+        assert_eq!(
+            &[
+                LetterSpace,
+                Dash,
+                TinySpace,
+                Dot,
+                TinySpace,
+                Dot,
+                TinySpace,
+                Dot,
+                WordSpace,
+                Dot,
+                TinySpace,
+                Dot,
+                TinySpace,
+                Dot
+            ],
+            &morses[..]
         );
     }
 }
