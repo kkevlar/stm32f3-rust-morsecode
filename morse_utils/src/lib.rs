@@ -4,7 +4,6 @@
 pub enum Morse {
     Dot,
     Dash,
-    Error,
     TinySpace,
     LetterSpace,
     WordSpace,
@@ -12,7 +11,7 @@ pub enum Morse {
 
 extern crate heapless;
 
-use core::{convert::TryFrom};
+use core::convert::TryFrom;
 
 use heapless::consts::*;
 use heapless::spsc::Queue;
@@ -32,11 +31,13 @@ pub enum LightState {
 #[derive(PartialEq, Eq, Copy, Clone, Debug)]
 pub enum MorseErr {
     BestErrorBug,
-    TooFewTLEs,
     InputTooLarge,
     MorseInputCrossesLetterBound(Morse),
     QueueBug,
     UnknownChar((u8, u8)),
+    EmptyInput,
+    ConsumeLogicBug,
+    InvalidMorseCandidate(MorseCandidate),
 }
 
 #[derive(PartialEq, Eq, Copy, Clone, Debug)]
@@ -117,7 +118,9 @@ pub fn construct_key() -> Result<MorseKey, ()> {
 }
 
 pub fn serialize_morse(morse: &[Morse]) -> Result<MorseSequenceSerialization, MorseErr> {
-    if morse.len() <= 8 {
+    if morse.len() == 0 {
+        Err(MorseErr::EmptyInput)
+    } else if morse.len() <= 8 {
         let mut rep = 0u8;
         let mut mask = 1u8;
         for m in morse {
@@ -140,7 +143,7 @@ pub fn serialize_morse(morse: &[Morse]) -> Result<MorseSequenceSerialization, Mo
 
 pub fn tle_to_best_morse(tle: &TimedLightEvent, unit_millis: Time) -> Result<Morse, MorseErr> {
     let c = best_error(tle, unit_millis)?;
-    Ok(mc_to_morse(c.item))
+    Ok(mc_to_morse(c.item)?)
 }
 
 pub fn calc_error(
@@ -238,7 +241,7 @@ pub fn estimate_unit_time(
         // Converge on the minimum scoring unit time
         .fold(None, poisoned_min)
         // Ignore possible errors and pull out the best scoring unit time
-        .unwrap_or(Err(MorseErr::TooFewTLEs))
+        .unwrap_or(Err(MorseErr::EmptyInput))
 }
 
 pub enum CalcDigitalCutoffsErrs {
@@ -346,6 +349,24 @@ where
     })
 }
 
+pub fn definitive_consume_morses_produce_letter<C>(
+    incoming: &mut Consumer<Morse, C, usize>,
+    mut hold_word: Queue<Morse, C, usize>,
+    mkey: &MorseKey,
+) -> Result<(Option<char>, Queue<Morse, C, usize>), MorseErr>
+where
+    C: ArrayLength<Morse>,
+{
+    loop {
+        match consume_morses_produce_letter(incoming, hold_word, mkey) {
+            Err(e) => break Err(e),
+            Ok((None, q)) if incoming.ready() => hold_word = q,
+            Ok((None, q)) => break Ok((None, q)),
+            Ok((Some(c), q)) => break Ok((Some(c), q)),
+        }
+    }
+}
+
 pub fn consume_morses_produce_letter<C>(
     incoming: &mut Consumer<Morse, C, usize>,
     mut hold_word: Queue<Morse, C, usize>,
@@ -360,6 +381,8 @@ where
         Ok((Some(' '), hold_word))
     } else {
         let mut next_queue = None;
+
+        // We set next_queue based on the break condition
         while incoming.ready() && next_queue.is_none() {
             let morse = incoming.dequeue().ok_or(MorseErr::QueueBug)?;
 
@@ -367,7 +390,7 @@ where
                 next_queue = Some(Queue::new());
             } else if morse == WordSpace {
                 let mut q = Queue::new();
-                q.enqueue(LetterSpace).map_err(|_| MorseErr::InputTooLarge)?;
+                q.enqueue(WordSpace).map_err(|_| MorseErr::InputTooLarge)?;
                 next_queue = Some(q);
             } else {
                 hold_word
@@ -377,7 +400,9 @@ where
         }
         match next_queue {
             Some(next_queue) => {
-                if hold_word.len() <= 8 {
+                if hold_word.len() == 0 {
+                    Ok((None, next_queue))
+                } else if hold_word.len() <= 8 {
                     let v: Vec<Morse, U8> = hold_word.iter().map(|m| *m).collect();
 
                     let ser = serialize_morse(&v[..])?;
@@ -668,10 +693,15 @@ mod tests {
         consumer.enqueue(Dot).unwrap();
         consumer.enqueue(Dot).unwrap();
         consumer.enqueue(LetterSpace).unwrap();
+        consumer.enqueue(LetterSpace).unwrap();
         consumer.enqueue(Dot).unwrap();
         consumer.enqueue(Dot).unwrap();
         consumer.enqueue(Dot).unwrap();
+        consumer.enqueue(LetterSpace).unwrap();
         consumer.enqueue(WordSpace).unwrap();
+        consumer.enqueue(LetterSpace).unwrap();
+        consumer.enqueue(WordSpace).unwrap();
+        consumer.enqueue(LetterSpace).unwrap();
         consumer.enqueue(Dash).unwrap();
         consumer.enqueue(Dot).unwrap();
         consumer.enqueue(Dot).unwrap();
@@ -679,48 +709,50 @@ mod tests {
         consumer.enqueue(LetterSpace).unwrap();
         consumer.enqueue(Dot).unwrap();
         consumer.enqueue(LetterSpace).unwrap();
+        consumer.enqueue(LetterSpace).unwrap();
 
         let mut cvec: Vec<char, U64> = Vec::new();
         let mut q = Queue::new();
 
         loop {
-            let (char, newqueue) = consume_morses_produce_letter(&mut producer, q, &key).unwrap();
+            let (char, newqueue) =
+                definitive_consume_morses_produce_letter(&mut producer, q, &key).unwrap();
             q = newqueue;
-        println!("{:?}", q);
+            println!("{:?}", q);
             match char {
                 Some(c) => cvec.push(c).unwrap(),
                 None => break,
             }
         }
 
-        assert_eq!(['s', 's', ' ', 'b', 'e'], cvec[..])
+        assert_eq!(['s', 's', ' ', ' ', 'b', 'e'], cvec[..])
     }
 }
 
-pub fn mc_to_morse(mc: &MorseCandidate) -> Morse {
+pub fn mc_to_morse(mc: &MorseCandidate) -> Result<Morse, MorseErr> {
     use Morse::*;
     match mc {
         MorseCandidate {
             light_state: LightState::Light,
             units: 1,
-        } => Dot,
+        } => Ok(Dot),
         MorseCandidate {
             light_state: LightState::Light,
             units: 3,
-        } => Dash,
+        } => Ok(Dash),
         MorseCandidate {
             light_state: LightState::Dark,
             units: 1,
-        } => TinySpace,
+        } => Ok(TinySpace),
         MorseCandidate {
             light_state: LightState::Dark,
             units: 3,
-        } => LetterSpace,
+        } => Ok(LetterSpace),
         MorseCandidate {
             light_state: LightState::Dark,
             units: 7,
-        } => WordSpace,
-        _ => Morse::Error,
+        } => Ok(WordSpace),
+        _ => Err(MorseErr::InvalidMorseCandidate(mc.clone())),
     }
 }
 
