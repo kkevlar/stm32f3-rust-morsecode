@@ -1,13 +1,5 @@
 #![no_std]
 
-// macro_rules! hashmap {
-//     ($( $key: expr => $val: expr ),*) => {{
-//          let mut map = heapless::FnvIndexMap::new();
-//          $( map.insert($key, $val); )*
-//          map
-//     }}
-// }
-
 #[derive(PartialEq, Eq, Copy, Clone, Debug)]
 pub enum Morse {
     Dot,
@@ -20,12 +12,13 @@ pub enum Morse {
 
 extern crate heapless;
 
-use core::convert::TryFrom;
+use core::{convert::TryFrom};
 
-use heapless::spsc::Producer;
+use heapless::consts::*;
 use heapless::spsc::Queue;
 use heapless::Vec;
 use heapless::{spsc::Consumer, ArrayLength};
+use heapless::{spsc::Producer, FnvIndexMap};
 
 pub type Time = i64;
 pub type LightIntensity = u16;
@@ -40,6 +33,10 @@ pub enum LightState {
 pub enum MorseErr {
     BestErrorBug,
     TooFewTLEs,
+    InputTooLarge,
+    MorseInputCrossesLetterBound(Morse),
+    QueueBug,
+    UnknownChar((u8, u8)),
 }
 
 #[derive(PartialEq, Eq, Copy, Clone, Debug)]
@@ -99,6 +96,47 @@ const MORSE_CANDIDATES: [MorseCandidate; 5] = [
         units: 7,
     },
 ];
+
+pub type MorseSequenceSerialization = (u8, u8);
+pub type MorseKey = FnvIndexMap<MorseSequenceSerialization, char, U64>;
+
+pub fn construct_key() -> Result<MorseKey, ()> {
+    let elements = [
+        ((3u8, 0b00000000u8), 's'),
+        ((3u8, 0b00000010u8), 'r'),
+        ((3u8, 0b00000111u8), 'o'),
+        ((4u8, 0b00000001u8), 'b'),
+        ((1u8, 0b00000000u8), 'e'),
+    ];
+
+    let mut map: heapless::FnvIndexMap<_, _, U64> = heapless::FnvIndexMap::new();
+    for ((count, rep), val) in elements.iter() {
+        map.insert((*count, *rep), *val).map_err(|_| ())?;
+    }
+    Ok(map)
+}
+
+pub fn serialize_morse(morse: &[Morse]) -> Result<MorseSequenceSerialization, MorseErr> {
+    if morse.len() <= 8 {
+        let mut rep = 0u8;
+        let mut mask = 1u8;
+        for m in morse {
+            use Morse::*;
+            let bit_set = match m {
+                Dot => Ok(false),
+                Dash => Ok(true),
+                other => Err(MorseErr::MorseInputCrossesLetterBound(*other)),
+            }?;
+            if bit_set {
+                rep |= mask;
+            }
+            mask <<= 1;
+        }
+        Ok((morse.len() as u8, rep))
+    } else {
+        Err(MorseErr::InputTooLarge)
+    }
+}
 
 pub fn tle_to_best_morse(tle: &TimedLightEvent, unit_millis: Time) -> Result<Morse, MorseErr> {
     let c = best_error(tle, unit_millis)?;
@@ -306,6 +344,52 @@ where
         tles: out_vec,
         state: (start_time, curr_light_state),
     })
+}
+
+pub fn consume_morses_produce_letter<C>(
+    incoming: &mut Consumer<Morse, C, usize>,
+    mut hold_word: Queue<Morse, C, usize>,
+    mkey: &MorseKey,
+) -> Result<(Option<char>, Queue<Morse, C, usize>), MorseErr>
+where
+    C: ArrayLength<Morse>,
+{
+    use Morse::*;
+    if hold_word.peek() == Some(&WordSpace) {
+        hold_word.dequeue();
+        Ok((Some(' '), hold_word))
+    } else {
+        let mut next_queue = None;
+        while incoming.ready() && next_queue.is_none() {
+            let morse = incoming.dequeue().ok_or(MorseErr::QueueBug)?;
+
+            if morse == LetterSpace {
+                next_queue = Some(Queue::new());
+            } else if morse == WordSpace {
+                let mut q = Queue::new();
+                q.enqueue(LetterSpace).map_err(|_| MorseErr::InputTooLarge)?;
+                next_queue = Some(q);
+            } else {
+                hold_word
+                    .enqueue(morse)
+                    .map_err(|_| MorseErr::InputTooLarge)?;
+            }
+        }
+        match next_queue {
+            Some(next_queue) => {
+                if hold_word.len() <= 8 {
+                    let v: Vec<Morse, U8> = hold_word.iter().map(|m| *m).collect();
+
+                    let ser = serialize_morse(&v[..])?;
+                    let c = mkey.get(&ser).ok_or(MorseErr::UnknownChar(ser))?;
+                    Ok((Some(*c), next_queue))
+                } else {
+                    Err(MorseErr::InputTooLarge)
+                }
+            }
+            None => Ok((None, hold_word)),
+        }
+    }
 }
 
 #[cfg(test)]
@@ -531,6 +615,85 @@ mod tests {
             ],
             &morses[..]
         );
+    }
+
+    #[test]
+    fn test_lookup() {
+        use Morse::*;
+        let arr = [Dash, Dot, Dot, Dot];
+        let key = construct_key().unwrap();
+        let ser = serialize_morse(&arr).unwrap();
+        assert_eq!(Some(&'b'), key.get(&ser));
+    }
+
+    #[test]
+    fn test_consume() {
+        use Morse::*;
+
+        let key = construct_key().unwrap();
+
+        let mut morse_queue: Queue<_, U64, _> = Queue::new();
+        let (mut consumer, mut producer) = morse_queue.split();
+
+        consumer.enqueue(Dot).unwrap();
+        consumer.enqueue(Dot).unwrap();
+
+        let q = Queue::new();
+
+        let (char, q) = consume_morses_produce_letter(&mut producer, q, &key).unwrap();
+        assert_eq!(None, char);
+
+        consumer.enqueue(Dot).unwrap();
+
+        let (char, q) = consume_morses_produce_letter(&mut producer, q, &key).unwrap();
+        assert_eq!(None, char);
+
+        consumer.enqueue(LetterSpace).unwrap();
+
+        let (char, q) = consume_morses_produce_letter(&mut producer, q, &key).unwrap();
+        assert_eq!(Some('s'), char);
+        assert!(q.is_empty());
+    }
+
+    #[test]
+    fn test_consume2() {
+        use Morse::*;
+
+        let key = construct_key().unwrap();
+
+        let mut morse_queue: Queue<_, U64, _> = Queue::new();
+        let (mut consumer, mut producer) = morse_queue.split();
+
+        consumer.enqueue(Dot).unwrap();
+        consumer.enqueue(Dot).unwrap();
+        consumer.enqueue(Dot).unwrap();
+        consumer.enqueue(LetterSpace).unwrap();
+        consumer.enqueue(Dot).unwrap();
+        consumer.enqueue(Dot).unwrap();
+        consumer.enqueue(Dot).unwrap();
+        consumer.enqueue(WordSpace).unwrap();
+        consumer.enqueue(Dash).unwrap();
+        consumer.enqueue(Dot).unwrap();
+        consumer.enqueue(Dot).unwrap();
+        consumer.enqueue(Dot).unwrap();
+        consumer.enqueue(LetterSpace).unwrap();
+        consumer.enqueue(Dot).unwrap();
+        consumer.enqueue(LetterSpace).unwrap();
+
+        let mut cvec: Vec<char, U64> = Vec::new();
+        let mut q = Queue::new();
+
+        loop {
+            let (char, newqueue) = consume_morses_produce_letter(&mut producer, q, &key).unwrap();
+            q = newqueue;
+        println!("{:?}", q);
+            match char {
+                Some(c) => cvec.push(c).unwrap(),
+                None => break,
+            }
+        }
+
+        assert_eq!(['s', 's', ' ', 'b', 'e'], cvec[..])
     }
 }
 
