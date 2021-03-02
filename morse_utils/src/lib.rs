@@ -38,6 +38,7 @@ pub enum MorseErr {
     EmptyInput,
     ConsumeLogicBug,
     InvalidMorseCandidate(MorseCandidate),
+    FailedTLEConversion(ConvertErrs),
 }
 
 #[derive(PartialEq, Eq, Copy, Clone, Debug)]
@@ -61,6 +62,91 @@ pub struct TimedLightEvent {
 pub struct ConsumeSamplesInfo<C: heapless::ArrayLength<TimedLightEvent>> {
     pub tles: Vec<TimedLightEvent, C>,
     pub state: (Time, LightState),
+}
+
+#[derive(PartialEq, Eq, Debug)]
+pub struct MorseConverter<C>
+where
+    C: ArrayLength<SampledLightIntensity> + ArrayLength<TimedLightEvent> + ArrayLength<Morse>,
+{
+    samples: Queue<SampledLightIntensity, C, usize>,
+    tles: Queue<TimedLightEvent, C, usize>,
+    morses: Queue<Morse, C, usize>,
+    hold_word: Queue<Morse, C, usize>,
+    to_tles_init: (Time, LightState),
+    cuts: IntensityCutoffs,
+    unit_ms: Time,
+    morse_key: MorseKey,
+}
+
+impl<C> MorseConverter<C>
+where
+    C: ArrayLength<SampledLightIntensity> + ArrayLength<TimedLightEvent> + ArrayLength<Morse>,
+{
+    pub fn new(
+        start_time: Time,
+        unit_ms: Time,
+        cuts: IntensityCutoffs,
+    ) -> Result<MorseConverter<C>, ()> {
+        Ok(MorseConverter {
+            samples: Queue::new(),
+            tles: Queue::new(),
+            morses: Queue::new(),
+            hold_word: Queue::new(),
+            cuts,
+            to_tles_init: (start_time, LightState::Dark),
+            unit_ms,
+            morse_key: construct_key()?,
+        })
+    }
+    pub fn add_sample(&mut self, sample: SampledLightIntensity) -> Result<(), MorseErr> {
+        match self.samples.enqueue(sample) {
+            Ok(_) => Ok(()),
+            Err(_) => Err(MorseErr::InputTooLarge),
+        }
+    }
+    fn consume_samples(&mut self) -> Result<(), MorseErr> {
+        let (_, mut consumer) = self.samples.split();
+        let r = intensities_to_tles(&mut consumer, self.to_tles_init, self.cuts)
+            .map_err(|e| MorseErr::FailedTLEConversion(e))?;
+        let ConsumeSamplesInfo { tles, state } = r;
+        for t in tles {
+            self.tles.enqueue(t).map_err(|_| MorseErr::InputTooLarge)?;
+        }
+        self.to_tles_init = state;
+        Ok(())
+    }
+    fn consume_tles(&mut self) -> Result<(), MorseErr> {
+        while !self.tles.is_empty() {
+            let tle = self.tles.dequeue().ok_or(MorseErr::QueueBug)?;
+            let m = tle_to_best_morse(&tle, self.unit_ms)?;
+            self.morses
+                .enqueue(m)
+                .map_err(|_| MorseErr::InputTooLarge)?;
+        }
+        Ok(())
+    }
+    fn consume_morses<D>(&mut self) -> Result<Vec<char, D>, MorseErr>
+    where
+        D: ArrayLength<char>,
+    {
+        let mut outvec = Vec::new();
+        let (_, mut producer) = self.morses.split();
+        loop {
+            //TODO!
+            let (char, newqueue) = definitive_consume_morses_produce_letter(
+                &mut producer,
+                self.hold_word.clone(),
+                &self.morse_key,
+            )?;
+            self.hold_word = newqueue;
+            match char {
+                Some(c) => outvec.push(c).map_err(|_| MorseErr::InputTooLarge)?,
+                None => break,
+            }
+        }
+        Ok(outvec)
+    }
 }
 
 #[derive(PartialEq, Eq, Copy, Clone, Debug)]
@@ -358,7 +444,7 @@ where
     C: ArrayLength<Morse>,
 {
     loop {
-        match consume_morses_produce_letter(incoming, hold_word, mkey) {
+        match private_consume_morses_produce_letter(incoming, hold_word, mkey) {
             Err(e) => break Err(e),
             Ok((None, q)) if incoming.ready() => hold_word = q,
             Ok((None, q)) => break Ok((None, q)),
@@ -367,7 +453,7 @@ where
     }
 }
 
-pub fn consume_morses_produce_letter<C>(
+fn private_consume_morses_produce_letter<C>(
     incoming: &mut Consumer<Morse, C, usize>,
     mut hold_word: Queue<Morse, C, usize>,
     mkey: &MorseKey,
@@ -665,17 +751,17 @@ mod tests {
 
         let q = Queue::new();
 
-        let (char, q) = consume_morses_produce_letter(&mut producer, q, &key).unwrap();
+        let (char, q) = private_consume_morses_produce_letter(&mut producer, q, &key).unwrap();
         assert_eq!(None, char);
 
         consumer.enqueue(Dot).unwrap();
 
-        let (char, q) = consume_morses_produce_letter(&mut producer, q, &key).unwrap();
+        let (char, q) = private_consume_morses_produce_letter(&mut producer, q, &key).unwrap();
         assert_eq!(None, char);
 
         consumer.enqueue(LetterSpace).unwrap();
 
-        let (char, q) = consume_morses_produce_letter(&mut producer, q, &key).unwrap();
+        let (char, q) = private_consume_morses_produce_letter(&mut producer, q, &key).unwrap();
         assert_eq!(Some('s'), char);
         assert!(q.is_empty());
     }

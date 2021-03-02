@@ -336,72 +336,72 @@ enum Busted {
     ConvertFailed(morse_utils::ConvertErrs),
 }
 
-fn poll_morse(
-    mut start_time: i64,
-    tim6: &aux9::tim6::RegisterBlock,
-    gpioa: &aux9::gpioa::RegisterBlock,
-    poll_delay: u16,
-) -> Result<(), Busted> {
-    let count = 3001 / poll_delay;
+// fn poll_morse(
+//     mut start_time: i64,
+//     tim6: &aux9::tim6::RegisterBlock,
+//     gpioa: &aux9::gpioa::RegisterBlock,
+//     poll_delay: u16,
+// ) -> Result<(), Busted> {
+//     let count = 3001 / poll_delay;
 
-    use heapless::consts::*;
-    use heapless::Vec;
-    let mut intensities: Vec<_, U64> = Vec::new();
+//     use heapless::consts::*;
+//     use heapless::Vec;
+//     let mut intensities: Vec<_, U64> = Vec::new();
 
-    // TODO add breakpoint here
-    if intensities.capacity() <= count as usize {
-        Err(Busted::CantPollThatLong)
-    } else {
-        for i in 0..count {
-            let bit: bool = gpioa.idr.read().idr0().bit();
+//     // TODO add breakpoint here
+//     if intensities.capacity() <= count as usize {
+//         Err(Busted::CantPollThatLong)
+//     } else {
+//         for i in 0..count {
+//             let bit: bool = gpioa.idr.read().idr0().bit();
 
-            intensities.push((
-                start_time,
-                match bit {
-                    false => 100,
-                    true => 1000,
-                },
-            ));
+//             intensities.push((
+//                 start_time,
+//                 match bit {
+//                     false => 100,
+//                     true => 1000,
+//                 },
+//             ));
 
-            delay(tim6, poll_delay);
-            start_time += poll_delay as i64;
-        }
+//             delay(tim6, poll_delay);
+//             start_time += poll_delay as i64;
+//         }
 
-        use morse_utils::*;
-        let mut ttt: Vec<TimedLightEvent, U64> = Vec::new();
+//         use morse_utils::*;
+//         let mut ttt: Vec<TimedLightEvent, U64> = Vec::new();
 
-        convert(&intensities[..], &mut ttt, start_time).map_err(|e| Busted::ConvertFailed(e))?;
+//         // convert(&intensities[..], &mut ttt, start_time).map_err(|e| Busted::ConvertFailed(e))?;
 
-        let r = estimate_unit_time(&ttt, 200, 1500);
-        let unit_time = r.unwrap().item;
+//         let r = estimate_unit_time(&ttt, 200, 1500);
+//         let unit_time = r.unwrap().item;
 
-        let r: Vec<Scored<&MorseCandidate>, U32> = ttt
-            .iter()
-            .map(|tle| morse_utils::best_error(tle, unit_time))
-            .filter_map(Result::ok)
-            .collect();
+//         let r: Vec<Scored<&MorseCandidate>, U32> = ttt
+//             .iter()
+//             .map(|tle| morse_utils::best_error(tle, unit_time))
+//             .filter_map(Result::ok)
+//             .collect();
 
-        let r: Vec<morse_utils::Morse, U32> = r
-            .into_iter()
-            .map(|s| morse_utils::mc_to_morse(s.item))
-            .collect();
+//         let r: Vec<morse_utils::Morse, U32> = r
+//             .into_iter()
+//             .map(|s| morse_utils::mc_to_morse(s.item))
+//             .collect();
 
-        let mut r = stuff::heapless_reverse(r);
+//         let mut r = stuff::heapless_reverse(r);
 
-        let mut count = 0;
-        loop {
-            let c = stuff::letterify(&mut r);
-            // TODO add breakpoint here
-            if c == '?' {
-                count += 1;
-            }
-            if count > 10 {
-                break;
-            }
-        }
-        Ok(())
-    }
-}
+//         let mut count = 0;
+//         loop {
+//             let c = stuff::letterify(&mut r);
+//             // TODO add breakpoint here
+//             if c == '?' {
+//                 count += 1;
+//             }
+//             if count > 10 {
+//                 break;
+//             }
+//         }
+//         Ok(())
+//     }
+// }
 
 fn setup_input(rcc: &aux9::rcc::RegisterBlock, gpioa: &aux9::gpioa::RegisterBlock) {
     // Allow GPIOA
@@ -414,6 +414,165 @@ fn setup_input(rcc: &aux9::rcc::RegisterBlock, gpioa: &aux9::gpioa::RegisterBloc
     }
 
     // buster::be_busted().unwrap();
+}
+
+fn test_consume2() -> bool {
+    use heapless::consts::*;
+    use heapless::spsc::*;
+    use heapless::Vec;
+    use morse_utils::Morse::*;
+    use morse_utils::*;
+
+    let key = construct_key().unwrap();
+
+    let mut morse_queue: Queue<_, U64, _> = Queue::new();
+    let (mut consumer, mut producer) = morse_queue.split();
+
+    consumer.enqueue(Dot).unwrap();
+    consumer.enqueue(Dot).unwrap();
+    consumer.enqueue(Dot).unwrap();
+    consumer.enqueue(LetterSpace).unwrap();
+    consumer.enqueue(LetterSpace).unwrap();
+    consumer.enqueue(Dot).unwrap();
+    consumer.enqueue(Dot).unwrap();
+    consumer.enqueue(Dot).unwrap();
+    consumer.enqueue(LetterSpace).unwrap();
+    consumer.enqueue(WordSpace).unwrap();
+    consumer.enqueue(LetterSpace).unwrap();
+    consumer.enqueue(WordSpace).unwrap();
+    consumer.enqueue(LetterSpace).unwrap();
+    consumer.enqueue(Dash).unwrap();
+    consumer.enqueue(Dot).unwrap();
+    consumer.enqueue(Dot).unwrap();
+    consumer.enqueue(Dot).unwrap();
+    consumer.enqueue(LetterSpace).unwrap();
+    consumer.enqueue(Dot).unwrap();
+    consumer.enqueue(LetterSpace).unwrap();
+    consumer.enqueue(LetterSpace).unwrap();
+
+    let mut cvec: Vec<char, U64> = Vec::new();
+    let mut q = Queue::new();
+
+    loop {
+        let (char, newqueue) =
+            definitive_consume_morses_produce_letter(&mut producer, q, &key).unwrap();
+        q = newqueue;
+        match char {
+            Some(c) => cvec.push(c).unwrap(),
+            None => break,
+        }
+    }
+
+    ['s', 's', ' ', ' ', 'b', 'e'] == cvec[..]
+}
+
+fn test_queue_convert() -> Re {
+    use heapless::consts::*;
+    use heapless::spsc::*;
+    use heapless::Vec;
+    use morse_utils::Morse::*;
+    use morse_utils::*;
+
+    let my_intensities = [
+        (100, 0),
+        (100, 20),
+        (100, 40),
+        (900, 60),
+        (100, 120),
+        (900, 140),
+        (100, 160),
+        (900, 180),
+        (100, 200),
+        (900, 220),
+        (100, 240),
+        (100, 500),
+    ];
+
+    use heapless::spsc::Queue;
+
+    let mut sample_queue: Queue<_, U32, usize> = Queue::new();
+    let results = my_intensities
+        .iter()
+        .map(|(i, t)| SampledLightIntensity {
+            sample_time: *t,
+            intensity: *i,
+        })
+        .try_for_each(|i| sample_queue.enqueue(i));
+
+    let (mut consumer, mut producer) = sample_queue.split();
+
+    let popresult = intensities_to_tles(
+        &mut producer,
+        (0, LightState::Dark),
+        IntensityCutoffs {
+            low: 200,
+            high: 800,
+        },
+    )
+    .unwrap();
+
+    let rmorses: Result<Vec<_, U64>, _> = popresult
+        .tles
+        .iter()
+        .map(|t| tle_to_best_morse(t, 20))
+        .collect();
+    let mut morses = rmorses.unwrap();
+
+    consumer
+        .enqueue(SampledLightIntensity {
+            sample_time: 520,
+            intensity: 100,
+        })
+        .unwrap();
+    for i in 0..3 {
+        consumer
+            .enqueue(SampledLightIntensity {
+                sample_time: 540 + (40 * i),
+                intensity: 900,
+            })
+            .unwrap();
+        consumer
+            .enqueue(SampledLightIntensity {
+                sample_time: 560 + (40 * i),
+                intensity: 100,
+            })
+            .unwrap();
+    }
+
+    let popresult = intensities_to_tles(
+        &mut producer,
+        popresult.state,
+        IntensityCutoffs {
+            low: 200,
+            high: 800,
+        },
+    );
+
+    let rmorses: Result<Vec<_, U64>, _> = popresult
+        .unwrap()
+        .tles
+        .iter()
+        .map(|t| tle_to_best_morse(t, 20))
+        .collect();
+    let latemorses = rmorses.unwrap();
+    morses.extend_from_slice(&latemorses).unwrap();
+
+    &[
+        LetterSpace,
+        Dash,
+        TinySpace,
+        Dot,
+        TinySpace,
+        Dot,
+        TinySpace,
+        Dot,
+        WordSpace,
+        Dot,
+        TinySpace,
+        Dot,
+        TinySpace,
+        Dot,
+    ] == &morses[..]
 }
 
 #[entry]
@@ -436,20 +595,9 @@ fn main() -> ! {
 
     setup_input(rcc, gpioa);
 
-    // stuff::poll_morse();
-    let res = poll_morse(0, tim6, gpioa, 100);
+    let mut buf = [0u32; 2000];
 
-    if res.is_err() {
-        leds[2].on();
-    }
-
-    match res {
-        Ok(_) => leds[0].on(),
-        Err(_) => leds[0].off(),
-    }
-
-    loop {}
-
+    let mut i = 0u32;
     let ms = 50;
     loop {
         for curr in 0..8 {
@@ -459,6 +607,13 @@ fn main() -> ! {
             delay(tim6, ms);
             leds[curr].off();
             delay(tim6, ms);
+
+            buf[i as usize ] = i;
+            if i > 1000 {
+                leds[0].on();
+                i = 0;
+            }
+            i += 1;
         }
     }
 }
