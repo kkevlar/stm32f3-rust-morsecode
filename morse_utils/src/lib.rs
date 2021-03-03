@@ -11,7 +11,7 @@ pub enum Morse {
 
 extern crate heapless;
 
-use core::convert::TryFrom;
+use core::{convert::TryFrom};
 
 use heapless::consts::*;
 use heapless::spsc::Queue;
@@ -39,6 +39,7 @@ pub enum MorseErr {
     ConsumeLogicBug,
     InvalidMorseCandidate(MorseCandidate),
     FailedTLEConversion(ConvertErrs),
+    InvalidLetterTinySpacing,
 }
 
 #[derive(PartialEq, Eq, Copy, Clone, Debug)]
@@ -77,6 +78,22 @@ where
     cuts: IntensityCutoffs,
     unit_ms: Time,
     morse_key: MorseKey,
+    dark_push_time: Option<Time>,
+}
+
+fn queue_fill_vec<T, C>(mut q: Queue<T, C, usize>) -> (Queue<T, C, usize>, Vec<T, C>)
+where
+    T: Clone + core::fmt::Debug,
+    C: ArrayLength<T>,
+{
+    let mut v = Vec::new();
+    let mut newq = Queue::new();
+    while !q.is_empty() {
+        let item = q.dequeue().unwrap();
+        v.push(item.clone()).unwrap();
+        newq.enqueue(item).unwrap();
+    }
+    (newq, v)
 }
 
 impl<C> MorseConverter<C>
@@ -87,6 +104,7 @@ where
         start_time: Time,
         unit_ms: Time,
         cuts: IntensityCutoffs,
+        dark_push_time: Option<Time>,
     ) -> Result<MorseConverter<C>, ()> {
         Ok(MorseConverter {
             samples: Queue::new(),
@@ -97,6 +115,7 @@ where
             to_tles_init: (start_time, LightState::Dark),
             unit_ms,
             morse_key: construct_key()?,
+            dark_push_time,
         })
     }
     pub fn add_sample(&mut self, sample: SampledLightIntensity) -> Result<(), MorseErr> {
@@ -107,8 +126,13 @@ where
     }
     fn consume_samples(&mut self) -> Result<(), MorseErr> {
         let (_, mut consumer) = self.samples.split();
-        let r = intensities_to_tles(&mut consumer, self.to_tles_init, self.cuts)
-            .map_err(|e| MorseErr::FailedTLEConversion(e))?;
+        let r = intensities_to_tles(
+            &mut consumer,
+            self.to_tles_init,
+            self.cuts,
+            self.dark_push_time,
+        )
+        .map_err(|e| MorseErr::FailedTLEConversion(e))?;
         let ConsumeSamplesInfo { tles, state } = r;
         for t in tles {
             self.tles.enqueue(t).map_err(|_| MorseErr::InputTooLarge)?;
@@ -133,7 +157,7 @@ where
         let mut outvec = Vec::new();
         let (_, mut producer) = self.morses.split();
         loop {
-            //TODO!
+            //TODO! - remove the clone here
             let (char, newqueue) = definitive_consume_morses_produce_letter(
                 &mut producer,
                 self.hold_word.clone(),
@@ -146,6 +170,15 @@ where
             }
         }
         Ok(outvec)
+    }
+
+    pub fn produce_chars<D>(&mut self) -> Result<Vec<char, D>, MorseErr>
+    where
+        D: ArrayLength<char>,
+    {
+        self.consume_samples()?;
+        self.consume_tles()?;
+        self.consume_morses()
     }
 }
 
@@ -201,6 +234,35 @@ pub fn construct_key() -> Result<MorseKey, ()> {
         map.insert((*count, *rep), *val).map_err(|_| ())?;
     }
     Ok(map)
+}
+
+pub fn validate_morse_letter_tiny_spaces<C>(morse: Vec<Morse, C>) -> Result<Vec<Morse, C>, MorseErr>
+where
+    C: ArrayLength<Morse>,
+{
+    let mut expect_tiny_spaces = 0;
+    let mut count_tiny_spaces = 0;
+
+    let mut ret_vec = Vec::new();
+
+    for m in morse.iter() {
+        use Morse::*;
+        let m = *m;
+        match m {
+            TinySpace => count_tiny_spaces += 1,
+            Dot | Dash => {
+                expect_tiny_spaces += 1;
+                ret_vec.push(m).map_err(|_| MorseErr::InputTooLarge)?;
+            }
+            i => return Err(MorseErr::MorseInputCrossesLetterBound(i)),
+        }
+
+        if expect_tiny_spaces > count_tiny_spaces + 1 {
+            return Err(MorseErr::InvalidLetterTinySpacing);
+        }
+    }
+
+    Ok(ret_vec)
 }
 
 pub fn serialize_morse(morse: &[Morse]) -> Result<MorseSequenceSerialization, MorseErr> {
@@ -393,6 +455,7 @@ pub fn intensities_to_tles<C>(
     intensities: &mut Consumer<SampledLightIntensity, C, usize>,
     init: (Time, LightState),
     cuts: IntensityCutoffs,
+    dark_push_time: Option<Time>,
 ) -> Result<ConsumeSamplesInfo<C>, ConvertErrs>
 where
     C: heapless::ArrayLength<SampledLightIntensity> + ArrayLength<TimedLightEvent>,
@@ -410,11 +473,21 @@ where
             intensity: light,
         } = it.ok_or(BadQueueCode)?;
 
-        let next_light_state = match (curr_light_state, light) {
-            (Dark, x) if x > cuts.high => Some(Light),
-            (Light, x) if x < cuts.low => Some(Dark),
+        let mut next_light_state = match (curr_light_state, light) {
+            (Dark, light) if light > cuts.high => Some(Light),
+            (Light, light) if light < cuts.low => Some(Dark),
             _ => None,
         };
+
+        match (next_light_state, dark_push_time) {
+            (None, Some(dark_push_time)) => {
+                if time - start_time > dark_push_time && light < cuts.low {
+                    next_light_state = Some(Dark);
+                }
+            }
+            _ => (),
+        };
+
         match next_light_state {
             Some(next_light_state) => {
                 let tle = TimedLightEvent {
@@ -490,6 +563,7 @@ where
                     Ok((None, next_queue))
                 } else if hold_word.len() <= 8 {
                     let v: Vec<Morse, U8> = hold_word.iter().map(|m| *m).collect();
+                    let v = validate_morse_letter_tiny_spaces(v)?;
 
                     let ser = serialize_morse(&v[..])?;
                     let c = mkey.get(&ser).ok_or(MorseErr::UnknownChar(ser))?;
@@ -657,6 +731,7 @@ mod tests {
                 low: 200,
                 high: 800,
             },
+            None,
         )
         .unwrap();
 
@@ -695,6 +770,7 @@ mod tests {
                 low: 200,
                 high: 800,
             },
+            None,
         );
 
         let rmorses: Result<Vec<_, U64>, _> = popresult
@@ -747,7 +823,9 @@ mod tests {
         let (mut consumer, mut producer) = morse_queue.split();
 
         consumer.enqueue(Dot).unwrap();
+        consumer.enqueue(TinySpace).unwrap();
         consumer.enqueue(Dot).unwrap();
+        consumer.enqueue(TinySpace).unwrap();
 
         let q = Queue::new();
 
@@ -776,12 +854,16 @@ mod tests {
         let (mut consumer, mut producer) = morse_queue.split();
 
         consumer.enqueue(Dot).unwrap();
+        consumer.enqueue(TinySpace).unwrap();
         consumer.enqueue(Dot).unwrap();
+        consumer.enqueue(TinySpace).unwrap();
         consumer.enqueue(Dot).unwrap();
         consumer.enqueue(LetterSpace).unwrap();
         consumer.enqueue(LetterSpace).unwrap();
         consumer.enqueue(Dot).unwrap();
+        consumer.enqueue(TinySpace).unwrap();
         consumer.enqueue(Dot).unwrap();
+        consumer.enqueue(TinySpace).unwrap();
         consumer.enqueue(Dot).unwrap();
         consumer.enqueue(LetterSpace).unwrap();
         consumer.enqueue(WordSpace).unwrap();
@@ -789,8 +871,11 @@ mod tests {
         consumer.enqueue(WordSpace).unwrap();
         consumer.enqueue(LetterSpace).unwrap();
         consumer.enqueue(Dash).unwrap();
+        consumer.enqueue(TinySpace).unwrap();
         consumer.enqueue(Dot).unwrap();
+        consumer.enqueue(TinySpace).unwrap();
         consumer.enqueue(Dot).unwrap();
+        consumer.enqueue(TinySpace).unwrap();
         consumer.enqueue(Dot).unwrap();
         consumer.enqueue(LetterSpace).unwrap();
         consumer.enqueue(Dot).unwrap();
@@ -813,6 +898,54 @@ mod tests {
 
         assert_eq!(['s', 's', ' ', ' ', 'b', 'e'], cvec[..])
     }
+
+    #[test]
+    fn test_object() {
+        let my_intensities = [
+            (100, 0),
+            (100, 20),
+            (100, 40),
+            (900, 60),
+            (100, 120),
+            (900, 140),
+            (100, 160),
+            (900, 180),
+            (100, 200),
+            (900, 220),
+            (100, 240),
+            (100, 500),
+            (900, 520),
+            (100, 540),
+            (100, 800),
+        ];
+
+        let mut converter: MorseConverter<U64> = MorseConverter::new(
+            0,
+            20,
+            IntensityCutoffs {
+                low: 200,
+                high: 800,
+            },
+            Some(200),
+
+        )
+        .unwrap();
+
+        for (light, time) in my_intensities.iter() {
+            converter
+                .add_sample(SampledLightIntensity {
+                    intensity: *light,
+                    sample_time: *time,
+                })
+                .unwrap();
+        }
+
+        let vec: Vec<_, U32> = converter.produce_chars().unwrap();
+
+        assert_eq!(&['b', ' ', 'e', ' '], &vec[..]);
+    }
+    #[test]
+    fn test_tles_breaking() {}
 }
 
 pub fn mc_to_morse(mc: &MorseCandidate) -> Result<Morse, MorseErr> {

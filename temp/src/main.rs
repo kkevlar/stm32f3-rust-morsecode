@@ -466,113 +466,54 @@ fn test_consume2() -> bool {
     ['s', 's', ' ', ' ', 'b', 'e'] == cvec[..]
 }
 
-fn test_queue_convert() -> Re {
+fn test_queue_convert() -> bool {
     use heapless::consts::*;
     use heapless::spsc::*;
     use heapless::Vec;
     use morse_utils::Morse::*;
     use morse_utils::*;
+        let my_intensities = [
+            (100, 0),
+            (100, 20),
+            (100, 40),
+            (900, 60),
+            (100, 120),
+            (900, 140),
+            (100, 160),
+            (900, 180),
+            (100, 200),
+            (900, 220),
+            (100, 240),
+            (100, 500),
+            (900, 520),
+            (100, 540),
+            (100, 800),
+        ];
 
-    let my_intensities = [
-        (100, 0),
-        (100, 20),
-        (100, 40),
-        (900, 60),
-        (100, 120),
-        (900, 140),
-        (100, 160),
-        (900, 180),
-        (100, 200),
-        (900, 220),
-        (100, 240),
-        (100, 500),
-    ];
+        let mut converter: MorseConverter<U64> = MorseConverter::new(
+            0,
+            20,
+            IntensityCutoffs {
+                low: 200,
+                high: 800,
+            },
+            Some(200),
 
-    use heapless::spsc::Queue;
-
-    let mut sample_queue: Queue<_, U32, usize> = Queue::new();
-    let results = my_intensities
-        .iter()
-        .map(|(i, t)| SampledLightIntensity {
-            sample_time: *t,
-            intensity: *i,
-        })
-        .try_for_each(|i| sample_queue.enqueue(i));
-
-    let (mut consumer, mut producer) = sample_queue.split();
-
-    let popresult = intensities_to_tles(
-        &mut producer,
-        (0, LightState::Dark),
-        IntensityCutoffs {
-            low: 200,
-            high: 800,
-        },
-    )
-    .unwrap();
-
-    let rmorses: Result<Vec<_, U64>, _> = popresult
-        .tles
-        .iter()
-        .map(|t| tle_to_best_morse(t, 20))
-        .collect();
-    let mut morses = rmorses.unwrap();
-
-    consumer
-        .enqueue(SampledLightIntensity {
-            sample_time: 520,
-            intensity: 100,
-        })
+        )
         .unwrap();
-    for i in 0..3 {
-        consumer
-            .enqueue(SampledLightIntensity {
-                sample_time: 540 + (40 * i),
-                intensity: 900,
-            })
-            .unwrap();
-        consumer
-            .enqueue(SampledLightIntensity {
-                sample_time: 560 + (40 * i),
-                intensity: 100,
-            })
-            .unwrap();
-    }
 
-    let popresult = intensities_to_tles(
-        &mut producer,
-        popresult.state,
-        IntensityCutoffs {
-            low: 200,
-            high: 800,
-        },
-    );
+        for (light, time) in my_intensities.iter() {
+            converter
+                .add_sample(SampledLightIntensity {
+                    intensity: *light,
+                    sample_time: *time,
+                })
+                .unwrap();
+        }
 
-    let rmorses: Result<Vec<_, U64>, _> = popresult
-        .unwrap()
-        .tles
-        .iter()
-        .map(|t| tle_to_best_morse(t, 20))
-        .collect();
-    let latemorses = rmorses.unwrap();
-    morses.extend_from_slice(&latemorses).unwrap();
+        let vec: Vec<_, U32> = converter.produce_chars().unwrap();
 
-    &[
-        LetterSpace,
-        Dash,
-        TinySpace,
-        Dot,
-        TinySpace,
-        Dot,
-        TinySpace,
-        Dot,
-        WordSpace,
-        Dot,
-        TinySpace,
-        Dot,
-        TinySpace,
-        Dot,
-    ] == &morses[..]
+        &['b', ' ', 'e', ' '] == &vec[..]
 }
 
 #[entry]
@@ -595,7 +536,14 @@ fn main() -> ! {
 
     setup_input(rcc, gpioa);
 
-    let mut buf = [0u32; 2000];
+    if test_queue_convert()
+    {
+                leds[0].on();
+    }
+    loop{
+
+
+    }
 
     let mut i = 0u32;
     let ms = 50;
@@ -608,7 +556,6 @@ fn main() -> ! {
             leds[curr].off();
             delay(tim6, ms);
 
-            buf[i as usize ] = i;
             if i > 1000 {
                 leds[0].on();
                 i = 0;
