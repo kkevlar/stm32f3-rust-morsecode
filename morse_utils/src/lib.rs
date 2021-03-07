@@ -144,9 +144,12 @@ where
             None if self.span_count > 7 => {
                 let cuts = calc_digital_cutoffs(&self.sample_buf[..]);
                 let cuts = cuts.map_err(|e| MorseErr::CalcDigitalFailed(e))?;
-                let converter =
+                let mut converter =
                     MorseConverter::new(self.sample_buf[0].sample_time, self.unit_time, cuts, None)
                         .map_err(|_| MorseErr::InputTooLarge)?;
+                for sli in self.sample_buf.iter() {
+                    converter.add_sample(*sli)?;
+                }
                 self.converter = Some(converter);
                 self.produce_chars()
             }
@@ -334,11 +337,32 @@ pub type MorseKey = FnvIndexMap<MorseSequenceSerialization, char, U64>;
 
 pub fn construct_key() -> Result<MorseKey, ()> {
     let elements = [
-        ((3u8, 0b00000000u8), 's'),
-        ((3u8, 0b00000010u8), 'r'),
-        ((3u8, 0b00000111u8), 'o'),
+        ((2u8, 0b00000010u8), 'a'),
         ((4u8, 0b00000001u8), 'b'),
+        ((4u8, 0b00000101u8), 'c'),
+        ((3u8, 0b00000001u8), 'd'),
         ((1u8, 0b00000000u8), 'e'),
+        ((4u8, 0b00000100u8), 'f'),
+        ((3u8, 0b00000011u8), 'g'),
+        ((4u8, 0b00000000u8), 'h'),
+        ((2u8, 0b00000000u8), 'i'),
+        ((4u8, 0b00001110u8), 'j'),
+        ((3u8, 0b00000101u8), 'k'),
+        ((4u8, 0b00000010u8), 'l'),
+        ((2u8, 0b00000011u8), 'm'),
+        ((2u8, 0b00000001u8), 'n'),
+        ((3u8, 0b00000111u8), 'o'),
+        ((4u8, 0b00000110u8), 'p'),
+        ((4u8, 0b00001011u8), 'q'),
+        ((3u8, 0b00000010u8), 'r'),
+        ((3u8, 0b00000000u8), 's'),
+        ((1u8, 0b00000001u8), 't'),
+        ((3u8, 0b00000100u8), 'u'),
+        ((4u8, 0b00001000u8), 'v'),
+        ((3u8, 0b00000110u8), 'w'),
+        ((4u8, 0b00001001u8), 'x'),
+        ((4u8, 0b00001101u8), 'y'),
+        ((4u8, 0b00000011u8), 'z'),
     ];
 
     let mut map: heapless::FnvIndexMap<_, _, U64> = heapless::FnvIndexMap::new();
@@ -704,7 +728,7 @@ mod tests {
     use heapless::consts::*;
     use heapless::Vec;
     extern crate std;
-    use std::println;
+    use std::{cmp::min, println};
 
     #[test]
     fn test_calc_error_spoton() {
@@ -1064,8 +1088,73 @@ mod tests {
 
         assert_eq!(&['b', ' ', 'e', ' '], &vec[..]);
     }
+
     #[test]
-    fn test_tles_breaking() {}
+    fn test_manager() {
+        let my_intensities = [
+            (100, 0),
+            (100, 20),
+            (100, 40),
+            (900, 60),
+            (100, 120),
+            (900, 140),
+            (100, 160),
+            (900, 180),
+            (100, 200),
+            (900, 220),
+            (100, 240),
+            (100, 500),
+            (900, 520),
+            (100, 540),
+            (100, 600),
+            (900, 601),
+            (900, 660),
+            (100, 661),
+            (100, 680),
+            (900, 681),
+            (900, 700),
+            (100, 720),
+            (900, 740),
+            (100, 760),
+            (900, 820), //o
+            (100, 880),
+            (900, 900),
+            (100, 960),
+            (900, 980),
+            (100, 1040),
+            (900, 1100), //g
+            (100, 1160),
+            (900, 1180),
+            (100, 1240),
+            (900, 1260),
+            (100, 1280),
+            (100, 1600),
+            (900, 1620),
+            (100, 1640),
+        ];
+
+        let mut converter: MorseManager<U64, U64> = MorseManager::new(
+            500,
+            MorseUnitTimeDecision::EstimateToBeDetermined(DeriveUnitTimeConfig {
+                guess_after_this_many_tles: 7,
+                max_guess_ms: 40,
+                min_guess_ms: 10,
+            }),
+        );
+
+        for (light, time) in my_intensities.iter() {
+            converter
+                .add_sample(SampledLightIntensity {
+                    intensity: *light,
+                    sample_time: *time,
+                })
+                .unwrap();
+        }
+
+        let vec: Vec<_, U32> = converter.produce_chars().unwrap();
+
+        assert_eq!(&['b', ' ', 'e', 'd', 'o', 'g', ' '], &vec[..]);
+    }
 }
 
 pub fn mc_to_morse(mc: &MorseCandidate) -> Result<Morse, MorseErr> {
