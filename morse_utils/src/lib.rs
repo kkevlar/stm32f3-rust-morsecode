@@ -11,7 +11,7 @@ pub enum Morse {
 
 extern crate heapless;
 
-use core::{convert::TryFrom};
+use core::convert::TryFrom;
 
 use heapless::consts::*;
 use heapless::spsc::Queue;
@@ -40,6 +40,7 @@ pub enum MorseErr {
     InvalidMorseCandidate(MorseCandidate),
     FailedTLEConversion(ConvertErrs),
     InvalidLetterTinySpacing,
+    CalcDigitalFailed(CalcDigitalCutoffsErrs),
 }
 
 #[derive(PartialEq, Eq, Copy, Clone, Debug)]
@@ -64,6 +65,96 @@ pub struct ConsumeSamplesInfo<C: heapless::ArrayLength<TimedLightEvent>> {
     pub tles: Vec<TimedLightEvent, C>,
     pub state: (Time, LightState),
 }
+#[derive(PartialEq, Eq, Clone, Debug, Copy)]
+pub struct DeriveUnitTimeConfig {
+    guess_after_this_many_tles: u32,
+    min_guess_ms: Time,
+    max_guess_ms: Time,
+}
+
+#[derive(PartialEq, Eq, Debug, Clone, Copy)]
+pub enum MorseUnitTimeDecision {
+    // How many tles should we wait for until we guess?j
+    EstimateToBeDetermined(DeriveUnitTimeConfig),
+    EstimateProvided(Time),
+}
+
+#[derive(PartialEq, Eq, Debug)]
+pub struct MorseManager<C, D>
+where
+    C: ArrayLength<SampledLightIntensity> + ArrayLength<TimedLightEvent> + ArrayLength<Morse>,
+    D: ArrayLength<SampledLightIntensity>,
+{
+    converter: Option<MorseConverter<C>>,
+    sample_buf: Vec<SampledLightIntensity, D>,
+    span_count: u32,
+    likely_middle: LightIntensity,
+    likely_last_light_state: LightState,
+    unit_time: MorseUnitTimeDecision,
+}
+
+impl<C, D> MorseManager<C, D>
+where
+    C: ArrayLength<SampledLightIntensity> + ArrayLength<TimedLightEvent> + ArrayLength<Morse>,
+    D: ArrayLength<SampledLightIntensity>,
+{
+    pub fn new(
+        likely_middle: LightIntensity,
+        unit_time: MorseUnitTimeDecision,
+    ) -> MorseManager<C, D> {
+        MorseManager {
+            converter: None,
+            sample_buf: Vec::new(),
+            span_count: 0,
+            likely_middle,
+            likely_last_light_state: LightState::Dark,
+            unit_time,
+        }
+    }
+
+    pub fn add_sample(&mut self, sli: SampledLightIntensity) -> Result<(), MorseErr> {
+        match &mut self.converter {
+            None => {
+                if sli.intensity < self.likely_middle
+                    && self.likely_last_light_state == LightState::Light
+                {
+                    self.span_count += 1;
+                    self.likely_last_light_state = LightState::Dark;
+                } else if sli.intensity > self.likely_middle
+                    && self.likely_last_light_state == LightState::Dark
+                {
+                    self.span_count += 1;
+                    self.likely_last_light_state = LightState::Light;
+                }
+
+                match self.sample_buf.push(sli) {
+                    Ok(_) => Ok(()),
+                    Err(_) => Err(MorseErr::InputTooLarge),
+                }
+            }
+            Some(converter) => converter.add_sample(sli),
+        }
+    }
+
+    pub fn produce_chars<E>(&mut self) -> Result<Vec<char, E>, MorseErr>
+    where
+        E: ArrayLength<char>,
+    {
+        match &mut self.converter {
+            None if self.span_count > 7 => {
+                let cuts = calc_digital_cutoffs(&self.sample_buf[..]);
+                let cuts = cuts.map_err(|e| MorseErr::CalcDigitalFailed(e))?;
+                let converter =
+                    MorseConverter::new(self.sample_buf[0].sample_time, self.unit_time, cuts, None)
+                        .map_err(|_| MorseErr::InputTooLarge)?;
+                self.converter = Some(converter);
+                self.produce_chars()
+            }
+            None => Ok(Vec::new()),
+            Some(converter) => converter.produce_chars(),
+        }
+    }
+}
 
 #[derive(PartialEq, Eq, Debug)]
 pub struct MorseConverter<C>
@@ -76,9 +167,9 @@ where
     hold_word: Queue<Morse, C, usize>,
     to_tles_init: (Time, LightState),
     cuts: IntensityCutoffs,
-    unit_ms: Time,
     morse_key: MorseKey,
     dark_push_time: Option<Time>,
+    unit_time: MorseUnitTimeDecision,
 }
 
 fn queue_fill_vec<T, C>(mut q: Queue<T, C, usize>) -> (Queue<T, C, usize>, Vec<T, C>)
@@ -102,7 +193,7 @@ where
 {
     pub fn new(
         start_time: Time,
-        unit_ms: Time,
+        unit_time: MorseUnitTimeDecision,
         cuts: IntensityCutoffs,
         dark_push_time: Option<Time>,
     ) -> Result<MorseConverter<C>, ()> {
@@ -113,9 +204,9 @@ where
             hold_word: Queue::new(),
             cuts,
             to_tles_init: (start_time, LightState::Dark),
-            unit_ms,
             morse_key: construct_key()?,
             dark_push_time,
+            unit_time: unit_time,
         })
     }
     pub fn add_sample(&mut self, sample: SampledLightIntensity) -> Result<(), MorseErr> {
@@ -140,10 +231,10 @@ where
         self.to_tles_init = state;
         Ok(())
     }
-    fn consume_tles(&mut self) -> Result<(), MorseErr> {
+    fn consume_tles(&mut self, unit_ms: Time) -> Result<(), MorseErr> {
         while !self.tles.is_empty() {
             let tle = self.tles.dequeue().ok_or(MorseErr::QueueBug)?;
-            let m = tle_to_best_morse(&tle, self.unit_ms)?;
+            let m = tle_to_best_morse(&tle, unit_ms)?;
             self.morses
                 .enqueue(m)
                 .map_err(|_| MorseErr::InputTooLarge)?;
@@ -177,8 +268,29 @@ where
         D: ArrayLength<char>,
     {
         self.consume_samples()?;
-        self.consume_tles()?;
-        self.consume_morses()
+
+        match self.unit_time {
+            MorseUnitTimeDecision::EstimateProvided(unit_ms) => {
+                self.consume_tles(unit_ms)?;
+                self.consume_morses()
+            }
+            MorseUnitTimeDecision::EstimateToBeDetermined(DeriveUnitTimeConfig {
+                guess_after_this_many_tles: cutoff,
+                max_guess_ms: max,
+                min_guess_ms: min,
+            }) => {
+                if self.tles.len() as u32 >= cutoff {
+                    let v: Vec<_, C> = self.tles.iter().map(|x| x.clone()).collect();
+
+                    self.unit_time = MorseUnitTimeDecision::EstimateProvided(
+                        estimate_unit_time(&v[..], min, max)?.item,
+                    );
+                    self.produce_chars()
+                } else {
+                    Ok(Vec::new())
+                }
+            }
+        }
     }
 }
 
@@ -392,6 +504,7 @@ pub fn estimate_unit_time(
         .unwrap_or(Err(MorseErr::EmptyInput))
 }
 
+#[derive(PartialEq, Eq, Copy, Clone, Debug)]
 pub enum CalcDigitalCutoffsErrs {
     TooBig(core::num::TryFromIntError),
     NoIntensities,
@@ -400,12 +513,16 @@ pub enum CalcDigitalCutoffsErrs {
 }
 
 pub fn calc_digital_cutoffs(
-    intensities: &[(Time, LightIntensity)],
+    intensities: &[SampledLightIntensity],
 ) -> Result<IntensityCutoffs, CalcDigitalCutoffsErrs> {
     use CalcDigitalCutoffsErrs::*;
     let mut intensity_sum: u32 = 0;
 
-    for (_, li) in intensities {
+    for SampledLightIntensity {
+        sample_time: _,
+        intensity: li,
+    } in intensities
+    {
         intensity_sum += *li as u32;
     }
 
@@ -417,7 +534,11 @@ pub fn calc_digital_cutoffs(
 
     let mut lows = (0u32, 0u32);
     let mut highs = (0u32, 0u32);
-    for (_, li) in intensities {
+    for SampledLightIntensity {
+        sample_time: _,
+        intensity: li,
+    } in intensities
+    {
         let li = *li as u32;
         if li > intensity_avg {
             highs = (highs.0 + 1, highs.1 + li);
@@ -921,13 +1042,12 @@ mod tests {
 
         let mut converter: MorseConverter<U64> = MorseConverter::new(
             0,
-            20,
+            MorseUnitTimeDecision::EstimateProvided(20),
             IntensityCutoffs {
                 low: 200,
                 high: 800,
             },
             Some(200),
-
         )
         .unwrap();
 
