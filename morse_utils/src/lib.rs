@@ -67,9 +67,9 @@ pub struct ConsumeSamplesInfo<C: heapless::ArrayLength<TimedLightEvent>> {
 }
 #[derive(PartialEq, Eq, Clone, Debug, Copy)]
 pub struct DeriveUnitTimeConfig {
-    guess_after_this_many_tles: u32,
-    min_guess_ms: Time,
-    max_guess_ms: Time,
+    pub guess_after_this_many_tles: u32,
+    pub min_guess_ms: Time,
+    pub max_guess_ms: Time,
 }
 
 #[derive(PartialEq, Eq, Debug, Clone, Copy)]

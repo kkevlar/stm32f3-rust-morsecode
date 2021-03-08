@@ -1,9 +1,7 @@
 #![no_main]
 #![no_std]
 
-use aux9::{entry, tim6};
-
-pub mod buster;
+use aux9::{entry, gpioa, tim6};
 
 #[inline(never)]
 fn delay(tim6: &tim6::RegisterBlock, ms: u16) {
@@ -21,388 +19,6 @@ fn delay(tim6: &tim6::RegisterBlock, ms: u16) {
     tim6.sr.modify(|_, w| w.uif().clear_bit());
 }
 
-mod stuff {
-    use core::convert::TryFrom;
-    use heapless::consts::*;
-    use heapless::FnvIndexMap;
-    use heapless::Vec;
-    use morse_utils::*;
-
-    fn helper_fill_events_slice<T>(durations: &[i64], vec: &mut Vec<TimedLightEvent, T>)
-    where
-        T: heapless::ArrayLength<TimedLightEvent>,
-    {
-        for (i, duration) in durations.iter().enumerate() {
-            vec.push(TimedLightEvent {
-                light_state: {
-                    if i % 2 == 0 {
-                        LightState::Dark
-                    } else {
-                        LightState::Dark
-                    }
-                },
-                duration: *duration,
-            })
-            .unwrap();
-        }
-    }
-
-    fn best_error_helper(light_state: LightState, duration: i64, units: i64) -> i64 {
-        match best_error(
-            &TimedLightEvent {
-                light_state,
-                duration,
-            },
-            units,
-        ) {
-            Ok(s) => s.score,
-            _ => 200000,
-        }
-    }
-
-    macro_rules! hashmap {
-    ($( $key: expr => $val: expr ),*) => {{
-         let mut map = ::heapless::FnvIndexMap::new();
-         $( map.insert($key, $val); )*
-         map
-    }}
-}
-
-    fn split_slice<'a, T>(sl: &'a [T], on: &T) -> Vec<Vec<&'a T, U32>, U32>
-    where
-        T: core::fmt::Debug + core::cmp::PartialEq,
-    {
-        let mut v = Vec::new();
-
-        v.push(Vec::new());
-        let mut count = 0;
-
-        for item in sl.iter() {
-            if item == on {
-                v.push(Vec::new());
-                count += 1;
-            } else {
-                v[count].push(item);
-            }
-        }
-        v
-    }
-
-    // const myint: [(Time, LightIntensity); 9] = [
-    //     (5, 50),
-    //     (10, 50),
-    //     (15, 500),
-    //     (20, 50),
-    //     (25, 500),
-    //     (30, 50),
-    //     (35, 500),
-    //     (40, 50),
-    //     (55, 51),
-    //     (60, 500),
-    //     (75, 50),
-    //     (90, 500),
-    // ];
-
-    const test_durations: [i64; 52] = [
-        700, 300, 100, 100, 100, 100, 100, 100, 300, 300, 100, 300, 100, 300, 300, 100, 100, 100,
-        100, 300, 300, 300, 300, 300, 300, 100, 300, 300, 300, 100, 100, 700, 300, 100, 300, 100,
-        300, 300, 300, 100, 300, 100, 300, 300, 100, 100, 100, 100, 300, 100, 100, 700,
-    ];
-
-    pub fn buster2() -> bool {
-        let mut vb: Vec<u8, U8> = Vec::new();
-        let mut vc: Vec<u8, U64> = Vec::new();
-
-        vb.push(90);
-        vc.push(90);
-        vc.push(0);
-
-        let morse_key: FnvIndexMap<&str, char, U64> = hashmap![
-        "01" => 'a',
-        "1000" => 'b',
-        "1010" => 'c',
-        "100" => 'd',
-        "0" => 'e',
-        "0010" => 'f',
-        "110" => 'g',
-        "0000" => 'h',
-        "00" => 'i',
-        "0111" => 'j',
-        "101" => 'k',
-        "0100" => 'l',
-        "11" => 'm',
-        "10" => 'n',
-        "111" => 'o',
-        "0110" => 'p',
-        "1101" => 'q',
-        "010" => 'r',
-        "000" => 's',
-        "1" => 't',
-        "001" => 'u',
-        "0001" => 'v',
-        "011" => 'w',
-        "1001" => 'x',
-        "1011" => 'y',
-        "1100" => 'z'
-        ];
-
-        if vb[0] == vc[0] {
-            if vc.len() >= 2 {
-                false
-            } else {
-                true
-            }
-        } else {
-            false
-        }
-    }
-
-    const MORSE_KEY: [(&str, char); 26] = [
-        ("01", 'a'),
-        ("1000", 'b'),
-        ("1010", 'c'),
-        ("100", 'd'),
-        ("0", 'e'),
-        ("0010", 'f'),
-        ("110", 'g'),
-        ("0000", 'h'),
-        ("00", 'i'),
-        ("0111", 'j'),
-        ("101", 'k'),
-        ("0100", 'l'),
-        ("11", 'm'),
-        ("10", 'n'),
-        ("111", 'o'),
-        ("0110", 'p'),
-        ("1101", 'q'),
-        ("010", 'r'),
-        ("000", 's'),
-        ("1", 't'),
-        ("001", 'u'),
-        ("0001", 'v'),
-        ("011", 'w'),
-        ("1001", 'x'),
-        ("1011", 'y'),
-        ("1100", 'z'),
-    ];
-
-    pub fn lookup(s: &str) -> char {
-        let mut ret = '?';
-        for (seq, c) in MORSE_KEY.iter() {
-            if &s == seq {
-                ret = *c;
-            }
-        }
-        ret
-    }
-
-    pub fn letterify<S>(morse: &mut Vec<morse_utils::Morse, S>) -> char
-    where
-        S: heapless::ArrayLength<morse_utils::Morse>,
-    {
-        let mut curr_str: heapless::String<U64> = heapless::String::new();
-        let mut did_error = false;
-        let mut is_space = false;
-        let mut expect_tiny_space = false;
-
-        loop {
-            use morse_utils::Morse::*;
-            let m = morse.pop();
-            is_space = false;
-            match m {
-                None | Some(LetterSpace) => break,
-                Some(WordSpace) => {
-                    is_space = true;
-                    break;
-                }
-                Some(TinySpace) if expect_tiny_space => expect_tiny_space = false,
-                Some(Dot) if !expect_tiny_space => {
-                    curr_str.push('0').unwrap();
-                    expect_tiny_space = true
-                }
-                Some(Dash) if !expect_tiny_space => {
-                    curr_str.push('1').unwrap();
-                    expect_tiny_space = true
-                }
-                _ => {
-                    did_error = true;
-                    break;
-                }
-            };
-        }
-
-        match (did_error, is_space) {
-            (true, _) => '?',
-            (false, true) => ' ',
-            (false, false) => lookup(curr_str.as_str()),
-        }
-    }
-
-    pub fn heapless_reverse<T, S>(mut input: Vec<T, S>) -> Vec<T, S>
-    where
-        S: heapless::ArrayLength<T>,
-    {
-        let mut output: Vec<T, S> = Vec::new();
-        loop {
-            match input.pop() {
-                Some(x) => output.push(x),
-                _ => break,
-            };
-        }
-        output
-    }
-
-    // pub fn buster(leds: &mut aux9::Leds) -> bool {
-    //     let mut vb: Vec<u8, U8> = Vec::new();
-    //     let mut vc: Vec<u8, U64> = Vec::new();
-
-    //     let mut ttt: Vec<TimedLightEvent, U8> = Vec::new();
-
-    //     convert(&myint[..], &mut ttt, 0).unwrap();
-
-    //     let r = estimate_unit_time(&ttt, 5, 6);
-    //     let mut unwr = r.unwrap().item;
-
-    //     let r: Vec<Scored<&MorseCandidate>, U16> = ttt
-    //         .iter()
-    //         .map(|tle| morse_utils::best_error(tle, unwr))
-    //         .filter_map(Result::ok)
-    //         .collect();
-
-    //     let r: Vec<morse_utils::Morse, U256> = r
-    //         .into_iter()
-    //         .map(|s| morse_utils::mc_to_morse(s.item))
-    //         .collect();
-
-    //     let mut r = heapless_reverse(r);
-
-    //     for (i, b) in r.iter().enumerate() {
-    //         if *b != Morse::Error {
-    //             if i % 2 == 0 {
-    //                 leds[0].on();
-    //             } else {
-    //                 leds[0].off();
-    //             }
-    //         } else {
-    //             if i % 2 == 0 {
-    //                 leds[1].on();
-    //             } else {
-    //                 leds[1].off();
-    //             }
-    //         }
-    //     }
-
-    //     loop {
-    //         let c = letterify(&mut r);
-    //         leds[0].off();
-    //         if c == '?' {
-    //             leds[1].on();
-    //         }
-    //     }
-
-    //     vb.push(90);
-    //     vc.push(90);
-    //     vc.push(0);
-
-    //     if lookup("01") == 'a' {
-    //         leds[0].on();
-    //     } else {
-    //         leds[0].off();
-    //     }
-
-    //     //         if vb[0] == vc[0]
-    //     //         {
-    //     //         if v.len() > 2
-    //     //         {
-    //     //             false
-    //     //         }
-    //     //         else
-    //     //         {
-    //     //            true
-    //     //         }
-    //     //     }
-    //     //     else
-    //     //     {
-    //     // false
-    //     //     }
-    //     // }
-
-    //     true
-    // }
-}
-
-enum Busted {
-    CantPollThatLong,
-    ConvertFailed(morse_utils::ConvertErrs),
-}
-
-// fn poll_morse(
-//     mut start_time: i64,
-//     tim6: &aux9::tim6::RegisterBlock,
-//     gpioa: &aux9::gpioa::RegisterBlock,
-//     poll_delay: u16,
-// ) -> Result<(), Busted> {
-//     let count = 3001 / poll_delay;
-
-//     use heapless::consts::*;
-//     use heapless::Vec;
-//     let mut intensities: Vec<_, U64> = Vec::new();
-
-//     // TODO add breakpoint here
-//     if intensities.capacity() <= count as usize {
-//         Err(Busted::CantPollThatLong)
-//     } else {
-//         for i in 0..count {
-//             let bit: bool = gpioa.idr.read().idr0().bit();
-
-//             intensities.push((
-//                 start_time,
-//                 match bit {
-//                     false => 100,
-//                     true => 1000,
-//                 },
-//             ));
-
-//             delay(tim6, poll_delay);
-//             start_time += poll_delay as i64;
-//         }
-
-//         use morse_utils::*;
-//         let mut ttt: Vec<TimedLightEvent, U64> = Vec::new();
-
-//         // convert(&intensities[..], &mut ttt, start_time).map_err(|e| Busted::ConvertFailed(e))?;
-
-//         let r = estimate_unit_time(&ttt, 200, 1500);
-//         let unit_time = r.unwrap().item;
-
-//         let r: Vec<Scored<&MorseCandidate>, U32> = ttt
-//             .iter()
-//             .map(|tle| morse_utils::best_error(tle, unit_time))
-//             .filter_map(Result::ok)
-//             .collect();
-
-//         let r: Vec<morse_utils::Morse, U32> = r
-//             .into_iter()
-//             .map(|s| morse_utils::mc_to_morse(s.item))
-//             .collect();
-
-//         let mut r = stuff::heapless_reverse(r);
-
-//         let mut count = 0;
-//         loop {
-//             let c = stuff::letterify(&mut r);
-//             // TODO add breakpoint here
-//             if c == '?' {
-//                 count += 1;
-//             }
-//             if count > 10 {
-//                 break;
-//             }
-//         }
-//         Ok(())
-//     }
-// }
-
 fn setup_input(rcc: &aux9::rcc::RegisterBlock, gpioa: &aux9::gpioa::RegisterBlock) {
     // Allow GPIOA
     rcc.ahbenr.modify(|_, w| w.iopaen().set_bit());
@@ -412,108 +28,59 @@ fn setup_input(rcc: &aux9::rcc::RegisterBlock, gpioa: &aux9::gpioa::RegisterBloc
     unsafe {
         gpioa.pupdr.modify(|_, w| w.pupdr0().bits(2));
     }
-
-    // buster::be_busted().unwrap();
 }
 
-fn test_consume2() -> bool {
+fn test_do_it(
+    gpioa: &'static gpioa::RegisterBlock,
+    tim6: &'static tim6::RegisterBlock,
+) -> morse_utils::MorseErr {
     use heapless::consts::*;
     use heapless::spsc::*;
     use heapless::Vec;
     use morse_utils::Morse::*;
     use morse_utils::*;
 
-    let key = construct_key().unwrap();
+    let mut chars_so_far: Vec<char, U32> = Vec::new();
+    let mut mm: MorseManager<U64, U128> = MorseManager::new(
+        400,
+        MorseUnitTimeDecision::EstimateToBeDetermined(DeriveUnitTimeConfig {
+            guess_after_this_many_tles: 9,
+            max_guess_ms: 1000,
+            min_guess_ms: 100,
+        }),
+    );
 
-    let mut morse_queue: Queue<_, U64, _> = Queue::new();
-    let (mut consumer, mut producer) = morse_queue.split();
+    let mut time: Time = 0;
+    let mut err = None;
 
-    consumer.enqueue(Dot).unwrap();
-    consumer.enqueue(Dot).unwrap();
-    consumer.enqueue(Dot).unwrap();
-    consumer.enqueue(LetterSpace).unwrap();
-    consumer.enqueue(LetterSpace).unwrap();
-    consumer.enqueue(Dot).unwrap();
-    consumer.enqueue(Dot).unwrap();
-    consumer.enqueue(Dot).unwrap();
-    consumer.enqueue(LetterSpace).unwrap();
-    consumer.enqueue(WordSpace).unwrap();
-    consumer.enqueue(LetterSpace).unwrap();
-    consumer.enqueue(WordSpace).unwrap();
-    consumer.enqueue(LetterSpace).unwrap();
-    consumer.enqueue(Dash).unwrap();
-    consumer.enqueue(Dot).unwrap();
-    consumer.enqueue(Dot).unwrap();
-    consumer.enqueue(Dot).unwrap();
-    consumer.enqueue(LetterSpace).unwrap();
-    consumer.enqueue(Dot).unwrap();
-    consumer.enqueue(LetterSpace).unwrap();
-    consumer.enqueue(LetterSpace).unwrap();
+    while err.is_none() {
+        delay(tim6, 20);
+        time += 20;
 
-    let mut cvec: Vec<char, U64> = Vec::new();
-    let mut q = Queue::new();
-
-    loop {
-        let (char, newqueue) =
-            definitive_consume_morses_produce_letter(&mut producer, q, &key).unwrap();
-        q = newqueue;
-        match char {
-            Some(c) => cvec.push(c).unwrap(),
-            None => break,
+        let bit: bool = gpioa.idr.read().idr0().bit();
+        match mm.add_sample(SampledLightIntensity {
+            sample_time: time,
+            intensity: match bit {
+                false => 100,
+                true => 1000,
+            },
+        }) {
+            Ok(_) => (),
+            Err(me) => err = Some(me),
+        }
+        let new_chars: Vec<char, U8> = match mm.produce_chars() {
+            Ok(vec) => vec,
+            Err(me) => {
+                err = Some(me);
+                Vec::new()
+            }
+        };
+        for c in new_chars.iter() {
+            chars_so_far.push(*c);
         }
     }
 
-    ['s', 's', ' ', ' ', 'b', 'e'] == cvec[..]
-}
-
-fn test_queue_convert() -> bool {
-    use heapless::consts::*;
-    use heapless::spsc::*;
-    use heapless::Vec;
-    use morse_utils::Morse::*;
-    use morse_utils::*;
-        let my_intensities = [
-            (100, 0),
-            (100, 20),
-            (100, 40),
-            (900, 60),
-            (100, 120),
-            (900, 140),
-            (100, 160),
-            (900, 180),
-            (100, 200),
-            (900, 220),
-            (100, 240),
-            (100, 500),
-            (900, 520),
-            (100, 540),
-            (100, 800),
-        ];
-
-        let mut converter: MorseConverter<U64> = MorseConverter::new(
-            0,
-            20,
-            IntensityCutoffs {
-                low: 200,
-                high: 800,
-            },
-            Some(200),
-
-        )
-        .unwrap();
-
-        for (light, time) in my_intensities.iter() {
-            converter
-                .add_sample(SampledLightIntensity {
-                    intensity: *light,
-                    sample_time: *time,
-                })
-                .unwrap();
-        }
-
-        let vec: Vec<_, U32> = converter.produce_chars().unwrap();
-
-        &['b', ' ', 'e', ' '] == &vec[..]
+    return err.unwrap();
 }
 
 #[entry]
@@ -536,14 +103,7 @@ fn main() -> ! {
 
     setup_input(rcc, gpioa);
 
-    if test_queue_convert()
-    {
-                leds[0].on();
-    }
-    loop{
-
-
-    }
+    let himom = test_do_it(gpioa, tim6);
 
     let mut i = 0u32;
     let ms = 50;
