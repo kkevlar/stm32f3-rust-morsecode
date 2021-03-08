@@ -58,13 +58,14 @@ fn test_do_it(
         time += 20;
 
         let bit: bool = gpioa.idr.read().idr0().bit();
-        match mm.add_sample(SampledLightIntensity {
+        let sample = SampledLightIntensity {
             sample_time: time,
             intensity: match bit {
                 false => 100,
                 true => 1000,
             },
-        }) {
+        };
+        match mm.add_sample(sample) {
             Ok(_) => (),
             Err(me) => err = Some(me),
         }
