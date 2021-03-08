@@ -144,13 +144,13 @@ where
             None if self.span_count > 7 => {
                 let cuts = calc_digital_cutoffs(&self.sample_buf[..]);
                 let cuts = cuts.map_err(|e| MorseErr::CalcDigitalFailed(e))?;
-                let mut converter =
+                self.converter = Some(
                     MorseConverter::new(self.sample_buf[0].sample_time, self.unit_time, cuts, None)
-                        .map_err(|_| MorseErr::InputTooLarge)?;
+                        .map_err(|_| MorseErr::InputTooLarge)?,
+                );
                 for sli in self.sample_buf.iter() {
-                    converter.add_sample(*sli)?;
+                    self.converter.as_mut().unwrap().add_sample(*sli)?;
                 }
-                self.converter = Some(converter);
                 self.produce_chars()
             }
             None => Ok(Vec::new()),
@@ -219,9 +219,8 @@ where
         }
     }
     fn consume_samples(&mut self) -> Result<(), MorseErr> {
-        let (_, mut consumer) = self.samples.split();
         let r = intensities_to_tles(
-            &mut consumer,
+            &mut self.samples.split().1,
             self.to_tles_init,
             self.cuts,
             self.dark_push_time,
@@ -333,7 +332,7 @@ const MORSE_CANDIDATES: [MorseCandidate; 5] = [
 ];
 
 pub type MorseSequenceSerialization = (u8, u8);
-pub type MorseKey = FnvIndexMap<MorseSequenceSerialization, char, U64>;
+pub type MorseKey = FnvIndexMap<MorseSequenceSerialization, char, U32>;
 
 pub fn construct_key() -> Result<MorseKey, ()> {
     let elements = [
@@ -365,7 +364,7 @@ pub fn construct_key() -> Result<MorseKey, ()> {
         ((4u8, 0b00000011u8), 'z'),
     ];
 
-    let mut map: heapless::FnvIndexMap<_, _, U64> = heapless::FnvIndexMap::new();
+    let mut map = heapless::FnvIndexMap::new();
     for ((count, rep), val) in elements.iter() {
         map.insert((*count, *rep), *val).map_err(|_| ())?;
     }

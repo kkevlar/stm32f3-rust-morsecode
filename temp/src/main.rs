@@ -1,7 +1,8 @@
 #![no_main]
 #![no_std]
 
-use aux9::{entry, gpioa, tim6};
+use aux9::{entry, gpioa, tim6, Leds};
+use morse_utils::{construct_key, MorseKey};
 
 #[inline(never)]
 fn delay(tim6: &tim6::RegisterBlock, ms: u16) {
@@ -30,6 +31,12 @@ fn setup_input(rcc: &aux9::rcc::RegisterBlock, gpioa: &aux9::gpioa::RegisterBloc
     }
 }
 
+fn ima_key(leds: &mut Leds) -> morse_utils::MorseKey {
+    morse_utils::construct_key().unwrap()
+}
+
+fn oofus() {}
+
 fn test_do_it(
     gpioa: &'static gpioa::RegisterBlock,
     tim6: &'static tim6::RegisterBlock,
@@ -40,11 +47,11 @@ fn test_do_it(
     use morse_utils::Morse::*;
     use morse_utils::*;
 
-    let mut chars_so_far: Vec<char, U32> = Vec::new();
-    let mut mm: MorseManager<U64, U128> = MorseManager::new(
+    let mut chars_so_far: Vec<char, U16> = Vec::new();
+    let mut mm: MorseManager<U60, U90> = MorseManager::new(
         400,
         MorseUnitTimeDecision::EstimateToBeDetermined(DeriveUnitTimeConfig {
-            guess_after_this_many_tles: 9,
+            guess_after_this_many_tles: 5,
             max_guess_ms: 1000,
             min_guess_ms: 100,
         }),
@@ -54,8 +61,8 @@ fn test_do_it(
     let mut err = None;
 
     while err.is_none() {
-        delay(tim6, 20);
-        time += 20;
+        delay(tim6, 50);
+        time += 50;
 
         let bit: bool = gpioa.idr.read().idr0().bit();
         let sample = SampledLightIntensity {
@@ -79,9 +86,86 @@ fn test_do_it(
         for c in new_chars.iter() {
             chars_so_far.push(*c);
         }
+        if chars_so_far.len() > 1 {
+            loop {
+                oofus()
+            }
+        }
     }
 
     return err.unwrap();
+}
+
+fn test_manager() -> bool {
+    use heapless::consts::*;
+    use heapless::spsc::*;
+    use heapless::Vec;
+    use morse_utils::Morse::*;
+    use morse_utils::*;
+
+    let my_intensities = [
+        (100, 0),
+        (100, 20),
+        (100, 40),
+        (900, 60),
+        (100, 120),
+        (900, 140),
+        (100, 160),
+        (900, 180),
+        (100, 200),
+        (900, 220),
+        (100, 240),
+        (100, 500),
+        (900, 520),
+        (100, 540),
+        (100, 600),
+        (900, 601),
+        (900, 660),
+        (100, 661),
+        (100, 680),
+        (900, 681),
+        (900, 700),
+        (100, 720),
+        (900, 740),
+        (100, 760),
+        (900, 820), //o
+        (100, 880),
+        (900, 900),
+        (100, 960),
+        (900, 980),
+        (100, 1040),
+        (900, 1100), //g
+        (100, 1160),
+        (900, 1180),
+        (100, 1240),
+        (900, 1260),
+        (100, 1280),
+        (100, 1600),
+        (900, 1620),
+        (100, 1640),
+    ];
+
+    let mut converter: MorseManager<U64, U64> = MorseManager::new(
+        500,
+        MorseUnitTimeDecision::EstimateToBeDetermined(DeriveUnitTimeConfig {
+            guess_after_this_many_tles: 7,
+            max_guess_ms: 40,
+            min_guess_ms: 10,
+        }),
+    );
+
+    for (light, time) in my_intensities.iter() {
+        converter
+            .add_sample(SampledLightIntensity {
+                intensity: *light,
+                sample_time: *time,
+            })
+            .unwrap();
+    }
+
+    let vec: Vec<_, U32> = converter.produce_chars().unwrap();
+
+    &['b', ' ', 'e', 'd', 'o', 'g', ' '] == &vec[..]
 }
 
 #[entry]
@@ -104,7 +188,7 @@ fn main() -> ! {
 
     setup_input(rcc, gpioa);
 
-    let himom = test_do_it(gpioa, tim6);
+    let himom = test_manager();
 
     let mut i = 0u32;
     let ms = 50;
