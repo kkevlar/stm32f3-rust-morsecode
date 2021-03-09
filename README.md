@@ -1,6 +1,6 @@
-# discovery-morse
+# WIP
 
 
-Code stolen from https://github.com/rust-embedded/discovery
+Code initially borrowed from https://github.com/rust-embedded/discovery
 
 
