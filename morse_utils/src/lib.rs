@@ -141,7 +141,7 @@ where
         E: ArrayLength<char>,
     {
         match &mut self.converter {
-            None if self.span_count > 7 => {
+            None if self.span_count > 5 => {
                 let cuts = calc_digital_cutoffs(&self.sample_buf[..]);
                 let cuts = cuts.map_err(|e| MorseErr::CalcDigitalFailed(e))?;
                 self.converter = Some(
