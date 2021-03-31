@@ -149,9 +149,12 @@ where
                         .map_err(|_| MorseErr::InputTooLarge)?,
                 );
                 for sli in self.sample_buf.iter() {
+                    // This unwrap is safe!!! We just explicitly set this field to some.
                     self.converter.as_mut().unwrap().add_sample(*sli)?;
                 }
-                self.produce_chars()
+
+                // Would have preferred this to recurse and call self.produce_chars. The unwrap is safe
+                self.converter.as_mut().unwrap().produce_chars()
             }
             None => Ok(Vec::new()),
             Some(converter) => converter.produce_chars(),
@@ -265,6 +268,14 @@ where
         Ok(outvec)
     }
 
+    pub fn produce_chars_with_estimate<D>(&mut self, unit_ms:i64 ) -> Result<Vec<char, D>, MorseErr>
+    where
+        D: ArrayLength<char>,
+    {
+                self.consume_tles(unit_ms)?;
+                self.consume_morses()
+    }
+
     pub fn produce_chars<D>(&mut self) -> Result<Vec<char, D>, MorseErr>
     where
         D: ArrayLength<char>,
@@ -273,8 +284,7 @@ where
 
         match self.unit_time {
             MorseUnitTimeDecision::EstimateProvided(unit_ms) => {
-                self.consume_tles(unit_ms)?;
-                self.consume_morses()
+                self.produce_chars_with_estimate(unit_ms)
             }
             MorseUnitTimeDecision::EstimateToBeDetermined(DeriveUnitTimeConfig {
                 guess_after_this_many_tles: cutoff,
@@ -284,10 +294,9 @@ where
                 if self.tles.len() as u32 >= cutoff {
                     let v: Vec<_, C> = self.tles.iter().map(|x| x.clone()).collect();
 
-                    self.unit_time = MorseUnitTimeDecision::EstimateProvided(
-                        estimate_unit_time(&v[..], min, max)?.item,
-                    );
-                    self.produce_chars()
+                    let unit_ms =                         estimate_unit_time(&v[..], min, max)?.item;
+                    self.unit_time = MorseUnitTimeDecision::EstimateProvided(unit_ms) ;
+                self.produce_chars_with_estimate(unit_ms)
                 } else {
                     Ok(Vec::new())
                 }

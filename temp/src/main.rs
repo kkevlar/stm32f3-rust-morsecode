@@ -155,15 +155,22 @@ fn test_manager() -> bool {
     );
 
     for (light, time) in my_intensities.iter() {
-        converter
+        match converter
             .add_sample(SampledLightIntensity {
                 intensity: *light,
                 sample_time: *time,
             })
-            .unwrap();
+            {
+                Ok(_) => (),
+                Err(_) => return false,
+            }
     }
 
-    let vec: Vec<_, U32> = converter.produce_chars().unwrap();
+    let vec: Vec<_, U32> = match converter.produce_chars()
+    {
+        Ok(v) => v,
+        _ => return false,
+    };
 
     &['b', ' ', 'e', 'd', 'o', 'g', ' '] == &vec[..]
 }
