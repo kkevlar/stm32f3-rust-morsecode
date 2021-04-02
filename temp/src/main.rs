@@ -184,6 +184,7 @@ fn test_manager() -> bool {
     &['b', ' ', 'e', 'd', 'o', 'g', ' '] == &vec[..]
 }
 
+
 #[entry]
 fn main() -> ! {
     let (mut leds, gpioa, mut gpioc, rcc, tim6) = aux9::init();
