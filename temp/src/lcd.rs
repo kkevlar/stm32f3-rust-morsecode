@@ -56,21 +56,47 @@ impl<'a,'b,'c,'d,'e,> LcdObject<'a,'b,'c,'d,'e,>
        unimplemented!()
    }
 
-   fn send_generic_4(&mut self,  rs: bool) -> Result<(), ()>
+   fn send_generic_4(&mut self,  data_pins: &mut [LcdPin; 4], data: u8, rs: bool) -> Result<(), ()>
    {
-       self.control_enable_pin.set_low()?
-       self.control_rw_pin.set_low()?
+       self.control_enable_pin.set_low()?;
+       self.control_rw_pin.set_low()?;
+
 
        if rs{
-           self.control_rs_pin.set_high()?
+           self.control_rs_pin.set_high()?;
        }
        else
        {
 
-           self.control_rs_pin.set_low()?
+           self.control_rs_pin.set_low()?;
        }
 
+       for count in 0..2
+       {
+           for i in 0..4
+           {
+               // What should the mask be?
+               let mask = if count == 0 {
+                   0x10
+               }
+               else
+               {
+               0x01 
+               } << i;
+               
+               // Use the mask to set the data pin high or low
+               if data & mask > 0
+               {
+                   data_pins[i].set_high()?;
+               }
+               else
+               {
+                   data_pins[i].set_low()?;
+               }
+           }
+       }
 
+       unimplemented!()
 
    }
 }
