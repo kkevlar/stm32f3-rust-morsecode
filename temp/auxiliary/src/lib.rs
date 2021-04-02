@@ -10,16 +10,19 @@ pub use cortex_m_rt::entry;
 pub use f3::{
     hal::stm32f30x::{rcc, tim6, gpioa},
     led::Leds,
+    hal,
 };
 
 use f3::hal::{
     prelude::*,
     stm32f30x::{self, RCC, TIM6, GPIOA},
+    gpio::gpioc,
 };
 
 pub fn init() -> (
     Leds,
     &'static gpioa::RegisterBlock,
+    gpioc::Parts,
     &'static rcc::RegisterBlock,
     &'static tim6::RegisterBlock,
 ) {
@@ -29,5 +32,7 @@ pub fn init() -> (
 
     let leds = Leds::new(p.GPIOE.split(&mut rcc.ahb));
 
-    (leds,unsafe{&*GPIOA::ptr()}, unsafe { &*RCC::ptr() }, unsafe { &*TIM6::ptr() })
+    (leds,unsafe{&*GPIOA::ptr()}, 
+    p.GPIOC.split(&mut rcc.ahb),
+    unsafe { &*RCC::ptr() }, unsafe { &*TIM6::ptr() })
 }

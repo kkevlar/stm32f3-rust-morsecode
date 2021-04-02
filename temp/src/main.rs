@@ -4,6 +4,8 @@
 use aux9::{entry, gpioa, tim6, Leds};
 use morse_utils::{construct_key, MorseKey};
 
+mod lcd;
+
 #[inline(never)]
 fn delay(tim6: &tim6::RegisterBlock, ms: u16) {
     // Set the timer to go off in `ms` ticks
@@ -18,6 +20,15 @@ fn delay(tim6: &tim6::RegisterBlock, ms: u16) {
 
     // Clear the update event flag
     tim6.sr.modify(|_, w| w.uif().clear_bit());
+}
+
+fn setup_output(gpioa: &aux9::gpioa::RegisterBlock)
+{
+    gpioa.moder.write(|w| 
+        unsafe{
+        w.bits(0x0000u32) });
+    
+
 }
 
 fn setup_input(rcc: &aux9::rcc::RegisterBlock, gpioa: &aux9::gpioa::RegisterBlock) {
@@ -175,7 +186,7 @@ fn test_manager() -> bool {
 
 #[entry]
 fn main() -> ! {
-    let (mut leds, gpioa, rcc, tim6) = aux9::init();
+    let (mut leds, gpioa, mut gpioc, rcc, tim6) = aux9::init();
 
     // Power on the TIM6 timer
     rcc.apb1enr.modify(|_, w| w.tim6en().set_bit());
@@ -193,7 +204,15 @@ fn main() -> ! {
 
     setup_input(rcc, gpioa);
 
-   let ret =  test_do_it(gpioa, tim6);
+    let mut bruh = gpioc .pc0 .into_push_pull_output(&mut gpioc.moder, &mut gpioc.otyper).downgrade();
+    let mut mypin = lcd::LcdPin::new(
+   &mut bruh 
+    );
+
+    let mut buster = false;
+
+
+//    let ret =  test_do_it(gpioa, tim6);
 
     let mut i = 0u32;
     let ms = 50;
@@ -212,5 +231,17 @@ fn main() -> ! {
             }
             i += 1;
         }
+
+        if buster
+        {
+            mypin.set_low();
+        }
+        else{
+
+            mypin.set_high();
+        }
+        buster = !buster;
+
+
     }
 }
