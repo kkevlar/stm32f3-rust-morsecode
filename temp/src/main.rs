@@ -22,13 +22,8 @@ fn delay(tim6: &tim6::RegisterBlock, ms: u16) {
     tim6.sr.modify(|_, w| w.uif().clear_bit());
 }
 
-fn setup_output(gpioa: &aux9::gpioa::RegisterBlock)
-{
-    gpioa.moder.write(|w| 
-        unsafe{
-        w.bits(0x0000u32) });
-    
-
+fn setup_output(gpioa: &aux9::gpioa::RegisterBlock) {
+    gpioa.moder.write(|w| unsafe { w.bits(0x0000u32) });
 }
 
 fn setup_input(rcc: &aux9::rcc::RegisterBlock, gpioa: &aux9::gpioa::RegisterBlock) {
@@ -57,7 +52,6 @@ fn test_do_it(
     use heapless::Vec;
     use morse_utils::Morse::*;
     use morse_utils::*;
-
 
     let mut chars_so_far: Vec<char, U16> = Vec::new();
     let mut mm: MorseManager<U60, U50> = MorseManager::new(
@@ -184,7 +178,6 @@ fn test_manager() -> bool {
     &['b', ' ', 'e', 'd', 'o', 'g', ' '] == &vec[..]
 }
 
-
 #[entry]
 fn main() -> ! {
     let (mut leds, gpioa, mut gpioc, rcc, tim6) = aux9::init();
@@ -205,15 +198,15 @@ fn main() -> ! {
 
     setup_input(rcc, gpioa);
 
-    let mut bruh = gpioc .pc0 .into_push_pull_output(&mut gpioc.moder, &mut gpioc.otyper).downgrade();
-    let mut mypin = lcd::LcdPin::new(
-   &mut bruh 
-    );
+    let mut bruh = gpioc
+        .pc0
+        .into_push_pull_output(&mut gpioc.moder, &mut gpioc.otyper)
+        .downgrade();
+    let mut mypin = lcd::LcdPin::new(&mut bruh);
 
     let mut buster = false;
 
-
-//    let ret =  test_do_it(gpioa, tim6);
+    //    let ret =  test_do_it(gpioa, tim6);
 
     let mut i = 0u32;
     let ms = 50;
@@ -233,16 +226,11 @@ fn main() -> ! {
             i += 1;
         }
 
-        if buster
-        {
+        if buster {
             mypin.set_low();
-        }
-        else{
-
+        } else {
             mypin.set_high();
         }
         buster = !buster;
-
-
     }
 }
