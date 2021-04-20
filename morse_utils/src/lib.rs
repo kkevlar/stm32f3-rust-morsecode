@@ -88,7 +88,6 @@ where
         + 'mem,
     D: ArrayLength<SampledLightIntensity>,
 {
-    memory_struct: &'mem mut MorseConverterMemoryStruct<C>,
     converter: Option<MorseConverter<'mem, C>>,
     sample_buf: Vec<SampledLightIntensity, D>,
     span_count: u32,
@@ -108,7 +107,6 @@ where
         unit_time: MorseUnitTimeDecision,
     ) -> MorseManager<C, D> {
         MorseManager {
-            memory_struct,
             converter: None,
             sample_buf: Vec::new(),
             span_count: 0,
@@ -142,9 +140,8 @@ where
         }
     }
 
-    pub fn produce_chars<'a, E>(&'a mut self) -> Result<Vec<char, E>, MorseErr>
+    pub fn produce_chars<E>(&mut self) -> Result<Vec<char, E>, MorseErr>
     where
-        'a: 'mem,
         E: ArrayLength<char>,
     {
         match &mut self.converter {
