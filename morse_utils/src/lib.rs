@@ -79,13 +79,29 @@ pub enum MorseUnitTimeDecision {
     EstimateProvided(Time),
 }
 
+
 #[derive(PartialEq, Eq, Debug)]
-pub struct MorseManager<C, D>
+pub enum ConverterOrMemStruct<'mem, C>
 where
-    C: ArrayLength<SampledLightIntensity> + ArrayLength<TimedLightEvent> + ArrayLength<Morse>,
+    C: ArrayLength<SampledLightIntensity>
+        + ArrayLength<TimedLightEvent>
+        + ArrayLength<Morse>
+        + 'mem,
+{
+Converter(MorseConverter<'mem, C>),
+Memory(&'mem mut MorseConverterMemoryStruct<C>),
+}
+
+#[derive(PartialEq, Eq, Debug)]
+pub struct MorseManager<'mem, C, D>
+where
+    C: ArrayLength<SampledLightIntensity>
+        + ArrayLength<TimedLightEvent>
+        + ArrayLength<Morse>
+        + 'mem,
     D: ArrayLength<SampledLightIntensity>,
 {
-    converter: Option<MorseConverter<C>>,
+    converter: ConverterOrMemStruct<'mem, C>,
     sample_buf: Vec<SampledLightIntensity, D>,
     span_count: u32,
     likely_middle: LightIntensity,
@@ -93,17 +109,18 @@ where
     unit_time: MorseUnitTimeDecision,
 }
 
-impl<C, D> MorseManager<C, D>
+impl<'mem, C, D> MorseManager<'mem, C, D>
 where
     C: ArrayLength<SampledLightIntensity> + ArrayLength<TimedLightEvent> + ArrayLength<Morse>,
     D: ArrayLength<SampledLightIntensity>,
 {
     pub fn new(
+        memory_struct: &'mem mut MorseConverterMemoryStruct<C>,
         likely_middle: LightIntensity,
         unit_time: MorseUnitTimeDecision,
     ) -> MorseManager<C, D> {
         MorseManager {
-            converter: None,
+            converter: ConverterOrMemStruct::Memory(memory_struct),
             sample_buf: Vec::new(),
             span_count: 0,
             likely_middle,
@@ -113,8 +130,9 @@ where
     }
 
     pub fn add_sample(&mut self, sli: SampledLightIntensity) -> Result<(), MorseErr> {
+        use ConverterOrMemStruct::*;
         match &mut self.converter {
-            None => {
+            Memory(str) => {
                 if sli.intensity < self.likely_middle
                     && self.likely_last_light_state == LightState::Light
                 {
@@ -132,38 +150,64 @@ where
                     Err(_) => Err(MorseErr::InputTooLarge),
                 }
             }
-            Some(converter) => converter.add_sample(sli),
+            Converter(converter) => converter.add_sample(sli),
         }
     }
 
-    pub fn produce_chars<E>(&mut self) -> Result<Vec<char, E>, MorseErr>
+    fn hhelper<E>(&mut self) -> Result<(Option<MorseConverter<C>>, Result<Vec<char, E>, MorseErr>), MorseErr>
     where
         E: ArrayLength<char>,
     {
-        match &mut self.converter {
-            None if self.span_count > 5 => {
+        use ConverterOrMemStruct::*;
+        Ok(
+ match &self.converter {
+            Memory(mem) if self.span_count > 5 => {
                 let cuts = calc_digital_cutoffs(&self.sample_buf[..]);
                 let cuts = cuts.map_err(|e| MorseErr::CalcDigitalFailed(e))?;
-                self.converter = Some(
-                    MorseConverter::new(self.sample_buf[0].sample_time, self.unit_time, cuts, None)
-                        .map_err(|_| MorseErr::InputTooLarge)?,
-                );
+                let mut newconverter = 
+                    MorseConverter::new(
+                        mem,
+                        self.sample_buf[0].sample_time,
+                        cuts,
+                        self.unit_time,
+                    )
+                    .map_err(|_| MorseErr::InputTooLarge)?;
                 for sli in self.sample_buf.iter() {
                     // This unwrap is safe!!! We just explicitly set this field to some.
-                    self.converter.as_mut().unwrap().add_sample(*sli)?;
+                    newconverter.add_sample(*sli)?;
                 }
 
                 // Would have preferred this to recurse and call self.produce_chars. The unwrap is safe
-                self.converter.as_mut().unwrap().produce_chars()
+                let ret = newconverter.produce_chars();
+
+                (Some(newconverter),ret)
             }
-            None => Ok(Vec::new()),
-            Some(converter) => converter.produce_chars(),
+            Memory(_) => (None , Ok(Vec::new())),
+            Converter(converter) => (None, converter.produce_chars()),
         }
+    )
+    }
+
+    pub fn produce_chars<'a, E>(&'a mut self) -> Result<Vec<char, E>, MorseErr>
+    where
+        E: ArrayLength<char>,
+        'a : 'mem,
+    {
+        use ConverterOrMemStruct::*;
+      let (conv, ret) = self.hhelper()?;
+
+        match conv{
+Some(nw) => self.converter = Converter(nw),
+_ => (),
+        };
+
+        ret
+
     }
 }
 
 #[derive(PartialEq, Eq, Debug)]
-pub struct MorseConverter<C>
+pub struct MorseConverterMemoryStruct<C>
 where
     C: ArrayLength<SampledLightIntensity> + ArrayLength<TimedLightEvent> + ArrayLength<Morse>,
 {
@@ -171,11 +215,22 @@ where
     tles: Queue<TimedLightEvent, C, usize>,
     morses: Queue<Morse, C, usize>,
     hold_word: Queue<Morse, C, usize>,
-    to_tles_init: (Time, LightState),
-    cuts: IntensityCutoffs,
     morse_key: MorseKey,
-    dark_push_time: Option<Time>,
-    unit_time: MorseUnitTimeDecision,
+}
+
+impl<C> MorseConverterMemoryStruct<C>
+where
+    C: ArrayLength<SampledLightIntensity> + ArrayLength<TimedLightEvent> + ArrayLength<Morse>,
+{
+    pub fn new() -> Result<MorseConverterMemoryStruct<C>, ()> {
+        Ok(MorseConverterMemoryStruct {
+            samples: Queue::new(),
+            tles: Queue::new(),
+            morses: Queue::new(),
+            hold_word: Queue::new(),
+            morse_key: construct_key()?,
+        })
+    }
 }
 
 fn queue_fill_vec<T, C>(mut q: Queue<T, C, usize>) -> (Queue<T, C, usize>, Vec<T, C>)
@@ -193,37 +248,48 @@ where
     (newq, v)
 }
 
-impl<C> MorseConverter<C>
+#[derive(PartialEq, Eq, Debug)]
+pub struct MorseConverter<'mem, C>
+where
+    C: ArrayLength<SampledLightIntensity>
+        + ArrayLength<TimedLightEvent>
+        + ArrayLength<Morse>
+        + 'mem,
+{
+    to_tles_init: (Time, LightState),
+    cuts: IntensityCutoffs,
+    dark_push_time: Option<Time>,
+    unit_time: MorseUnitTimeDecision,
+    memory_struct: &'mem mut MorseConverterMemoryStruct<C>,
+}
+
+impl<'mem, C> MorseConverter<'mem, C>
 where
     C: ArrayLength<SampledLightIntensity> + ArrayLength<TimedLightEvent> + ArrayLength<Morse>,
 {
     pub fn new(
+        memory_struct: &'mem mut MorseConverterMemoryStruct<C>,
         start_time: Time,
-        unit_time: MorseUnitTimeDecision,
         cuts: IntensityCutoffs,
-        dark_push_time: Option<Time>,
+        unit_time: MorseUnitTimeDecision,
     ) -> Result<MorseConverter<C>, ()> {
         Ok(MorseConverter {
-            samples: Queue::new(),
-            tles: Queue::new(),
-            morses: Queue::new(),
-            hold_word: Queue::new(),
-            cuts,
             to_tles_init: (start_time, LightState::Dark),
-            morse_key: construct_key()?,
-            dark_push_time,
-            unit_time: unit_time,
+            cuts,
+            dark_push_time: None,
+            unit_time,
+            memory_struct,
         })
     }
     pub fn add_sample(&mut self, sample: SampledLightIntensity) -> Result<(), MorseErr> {
-        match self.samples.enqueue(sample) {
+        match self.memory_struct.samples.enqueue(sample) {
             Ok(_) => Ok(()),
             Err(_) => Err(MorseErr::InputTooLarge),
         }
     }
     fn consume_samples(&mut self) -> Result<(), MorseErr> {
         let r = intensities_to_tles(
-            &mut self.samples.split().1,
+            &mut self.memory_struct.samples.split().1,
             self.to_tles_init,
             self.cuts,
             self.dark_push_time,
@@ -231,16 +297,24 @@ where
         .map_err(|e| MorseErr::FailedTLEConversion(e))?;
         let ConsumeSamplesInfo { tles, state } = r;
         for t in tles {
-            self.tles.enqueue(t).map_err(|_| MorseErr::InputTooLarge)?;
+            self.memory_struct
+                .tles
+                .enqueue(t)
+                .map_err(|_| MorseErr::InputTooLarge)?;
         }
         self.to_tles_init = state;
         Ok(())
     }
     fn consume_tles(&mut self, unit_ms: Time) -> Result<(), MorseErr> {
-        while !self.tles.is_empty() {
-            let tle = self.tles.dequeue().ok_or(MorseErr::QueueBug)?;
+        while !self.memory_struct.tles.is_empty() {
+            let tle = self
+                .memory_struct
+                .tles
+                .dequeue()
+                .ok_or(MorseErr::QueueBug)?;
             let m = tle_to_best_morse(&tle, unit_ms)?;
-            self.morses
+            self.memory_struct
+                .morses
                 .enqueue(m)
                 .map_err(|_| MorseErr::InputTooLarge)?;
         }
@@ -251,15 +325,15 @@ where
         D: ArrayLength<char>,
     {
         let mut outvec = Vec::new();
-        let (_, mut producer) = self.morses.split();
+        let (_, mut producer) = self.memory_struct.morses.split();
         loop {
             //TODO! - remove the clone here
             let (char, newqueue) = definitive_consume_morses_produce_letter(
                 &mut producer,
-                self.hold_word.clone(),
-                &self.morse_key,
+                self.memory_struct.hold_word.clone(),
+                &self.memory_struct.morse_key,
             )?;
-            self.hold_word = newqueue;
+            self.memory_struct.hold_word = newqueue;
             match char {
                 Some(c) => outvec.push(c).map_err(|_| MorseErr::InputTooLarge)?,
                 None => break,
@@ -292,8 +366,9 @@ where
                 max_guess_ms: max,
                 min_guess_ms: min,
             }) => {
-                if self.tles.len() as u32 >= cutoff {
-                    let v: Vec<_, C> = self.tles.iter().map(|x| x.clone()).collect();
+                if self.memory_struct.tles.len() as u32 >= cutoff {
+                    //TODO check/remove the clone here
+                    let v: Vec<_, C> = self.memory_struct.tles.iter().map(|x| x.clone()).collect();
 
                     let unit_ms = estimate_unit_time(&v[..], min, max)?.item;
                     self.unit_time = MorseUnitTimeDecision::EstimateProvided(unit_ms);
@@ -1073,16 +1148,20 @@ mod tests {
             (900, 520),
             (100, 540),
             (100, 800),
+            (900, 820),
+            (100, 840),
         ];
 
+        let mut memstruct = MorseConverterMemoryStruct::new().unwrap();
+
         let mut converter: MorseConverter<U64> = MorseConverter::new(
+            &mut memstruct,
             0,
-            MorseUnitTimeDecision::EstimateProvided(20),
             IntensityCutoffs {
                 low: 200,
                 high: 800,
             },
-            Some(200),
+            MorseUnitTimeDecision::EstimateProvided(20),
         )
         .unwrap();
 
@@ -1143,8 +1222,10 @@ mod tests {
             (900, 1620),
             (100, 1640),
         ];
+        let mut mem = MorseConverterMemoryStruct::new().unwrap();
 
         let mut converter: MorseManager<U64, U64> = MorseManager::new(
+            &mut mem,
             500,
             MorseUnitTimeDecision::EstimateToBeDetermined(DeriveUnitTimeConfig {
                 guess_after_this_many_tles: 7,
