@@ -79,6 +79,19 @@ pub enum MorseUnitTimeDecision {
     EstimateProvided(Time),
 }
 
+
+#[derive(PartialEq, Eq, Debug)]
+pub enum ConverterOrMemStruct<'mem, C>
+where
+    C: ArrayLength<SampledLightIntensity>
+        + ArrayLength<TimedLightEvent>
+        + ArrayLength<Morse>
+        + 'mem,
+{
+Converter(MorseConverter<'mem, C>),
+Memory(&'mem mut MorseConverterMemoryStruct<C>),
+}
+
 #[derive(PartialEq, Eq, Debug)]
 pub struct MorseManager<'mem, C, D>
 where
@@ -88,7 +101,7 @@ where
         + 'mem,
     D: ArrayLength<SampledLightIntensity>,
 {
-    converter: Option<MorseConverter<'mem, C>>,
+    converter: ConverterOrMemStruct<'mem, C>,
     sample_buf: Vec<SampledLightIntensity, D>,
     span_count: u32,
     likely_middle: LightIntensity,
@@ -107,7 +120,7 @@ where
         unit_time: MorseUnitTimeDecision,
     ) -> MorseManager<C, D> {
         MorseManager {
-            converter: None,
+            converter: ConverterOrMemStruct::Memory(memory_struct),
             sample_buf: Vec::new(),
             span_count: 0,
             likely_middle,
@@ -117,8 +130,9 @@ where
     }
 
     pub fn add_sample(&mut self, sli: SampledLightIntensity) -> Result<(), MorseErr> {
+        use ConverterOrMemStruct::*;
         match &mut self.converter {
-            None => {
+            Memory(str) => {
                 if sli.intensity < self.likely_middle
                     && self.likely_last_light_state == LightState::Light
                 {
@@ -136,38 +150,59 @@ where
                     Err(_) => Err(MorseErr::InputTooLarge),
                 }
             }
-            Some(converter) => converter.add_sample(sli),
+            Converter(converter) => converter.add_sample(sli),
         }
     }
 
-    pub fn produce_chars<E>(&mut self) -> Result<Vec<char, E>, MorseErr>
+    fn hhelper<E>(&mut self) -> Result<(Option<MorseConverter<C>>, Result<Vec<char, E>, MorseErr>), MorseErr>
     where
         E: ArrayLength<char>,
     {
-        match &mut self.converter {
-            None if self.span_count > 5 => {
+        use ConverterOrMemStruct::*;
+        Ok(
+ match &self.converter {
+            Memory(mem) if self.span_count > 5 => {
                 let cuts = calc_digital_cutoffs(&self.sample_buf[..]);
                 let cuts = cuts.map_err(|e| MorseErr::CalcDigitalFailed(e))?;
-                self.converter = Some(
+                let mut newconverter = 
                     MorseConverter::new(
-                        self.memory_struct,
+                        mem,
                         self.sample_buf[0].sample_time,
                         cuts,
                         self.unit_time,
                     )
-                    .map_err(|_| MorseErr::InputTooLarge)?,
-                );
+                    .map_err(|_| MorseErr::InputTooLarge)?;
                 for sli in self.sample_buf.iter() {
                     // This unwrap is safe!!! We just explicitly set this field to some.
-                    self.converter.as_mut().unwrap().add_sample(*sli)?;
+                    newconverter.add_sample(*sli)?;
                 }
 
                 // Would have preferred this to recurse and call self.produce_chars. The unwrap is safe
-                self.converter.as_mut().unwrap().produce_chars()
+                let ret = newconverter.produce_chars();
+
+                (Some(newconverter),ret)
             }
-            None => Ok(Vec::new()),
-            Some(converter) => converter.produce_chars(),
+            Memory(_) => (None , Ok(Vec::new())),
+            Converter(converter) => (None, converter.produce_chars()),
         }
+    )
+    }
+
+    pub fn produce_chars<'a, E>(&'a mut self) -> Result<Vec<char, E>, MorseErr>
+    where
+        E: ArrayLength<char>,
+        'a : 'mem,
+    {
+        use ConverterOrMemStruct::*;
+      let (conv, ret) = self.hhelper()?;
+
+        match conv{
+Some(nw) => self.converter = Converter(nw),
+_ => (),
+        };
+
+        ret
+
     }
 }
 
