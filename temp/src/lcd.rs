@@ -2,8 +2,8 @@
 use embedded_hal::digital::v2::OutputPin;
 
 pub trait Delay {
-    fn delay_us(self, us: u32) -> ();
-    fn delay_ms(self, ms: u32) -> ();
+    fn delay_us(&self, us: u32) -> ();
+    fn delay_ms(&self, ms: u32) -> ();
 }
 
 pub struct LcdPin<'a> {
@@ -47,14 +47,15 @@ impl<'a, 'b, 'c, 'd, 'e> LcdObject<'a, 'b, 'c, 'd, 'e> {
         data: u8,
         rs: bool,
     ) -> Result<(), ()> {
-        self.control_enable_pin.set_low()?;
-        self.control_rw_pin.set_low()?;
 
         if rs {
             self.control_rs_pin.set_high()?;
         } else {
             self.control_rs_pin.set_low()?;
         }
+
+        self.control_enable_pin.set_low()?;
+        self.control_rw_pin.set_low()?;
 
         for count in 0..2 {
             for i in 0..4 {
@@ -67,9 +68,16 @@ impl<'a, 'b, 'c, 'd, 'e> LcdObject<'a, 'b, 'c, 'd, 'e> {
                 } else {
                     data_pins[i].set_low()?;
                 }
+
+                self.control_enable_pin.set_high()?;
+                self.delay.delay_us(1);
+                self.control_enable_pin.set_low()?;
+
+                if count == 0
+                { self.delay.delay_us(40); }
             }
         }
 
-        unimplemented!()
+        Ok(())
     }
 }
