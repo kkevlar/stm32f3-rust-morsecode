@@ -1098,117 +1098,121 @@ mod tests {
         assert_eq!(['s', 's', ' ', ' ', 'b', 'e'], cvec[..])
     }
 
-    // #[test]
-    // fn test_object() {
-    //     let my_intensities = [
-    //         (100, 0),
-    //         (100, 20),
-    //         (100, 40),
-    //         (900, 60),
-    //         (100, 120),
-    //         (900, 140),
-    //         (100, 160),
-    //         (900, 180),
-    //         (100, 200),
-    //         (900, 220),
-    //         (100, 240),
-    //         (100, 500),
-    //         (900, 520),
-    //         (100, 540),
-    //         (100, 800),
-    //     ];
+    #[test]
+    fn test_object() {
+        let my_intensities = [
+            (100, 0),
+            (100, 20),
+            (100, 40),
+            (900, 60),
+            (100, 120),
+            (900, 140),
+            (100, 160),
+            (900, 180),
+            (100, 200),
+            (900, 220),
+            (100, 240),
+            (100, 500),
+            (900, 520),
+            (100, 540),
+            (100, 800),
+            (900, 820),
+            (100, 840),
+        ];
 
-    //     let mut converter: MorseConverter<U64> = MorseConverter::new(
-    //         0,
-    //         MorseUnitTimeDecision::EstimateProvided(20),
-    //         IntensityCutoffs {
-    //             low: 200,
-    //             high: 800,
-    //         },
-    //         Some(200),
-    //     )
-    //     .unwrap();
+        let mut memstruct = MorseConverterMemoryStruct::new().unwrap();
 
-    //     for (light, time) in my_intensities.iter() {
-    //         converter
-    //             .add_sample(SampledLightIntensity {
-    //                 intensity: *light,
-    //                 sample_time: *time,
-    //             })
-    //             .unwrap();
-    //     }
+        let mut converter: MorseConverter<U64> = MorseConverter::new(
+            &mut memstruct,
+            0,
+IntensityCutoffs { low: 200, high: 800, },
+            MorseUnitTimeDecision::EstimateProvided(20),
+            
+        )
+        .unwrap();
 
-    //     let vec: Vec<_, U32> = converter.produce_chars().unwrap();
+        for (light, time) in my_intensities.iter() {
+            converter
+                .add_sample(SampledLightIntensity {
+                    intensity: *light,
+                    sample_time: *time,
+                })
+                .unwrap();
+        }
 
-    //     assert_eq!(&['b', ' ', 'e', ' '], &vec[..]);
-    // }
+        let vec: Vec<_, U32> = converter.produce_chars().unwrap();
 
-    // #[test]
-    // fn test_manager() {
-    //     let my_intensities = [
-    //         (100, 0),
-    //         (100, 20),
-    //         (100, 40),
-    //         (900, 60),
-    //         (100, 120),
-    //         (900, 140),
-    //         (100, 160),
-    //         (900, 180),
-    //         (100, 200),
-    //         (900, 220),
-    //         (100, 240),
-    //         (100, 500),
-    //         (900, 520),
-    //         (100, 540),
-    //         (100, 600),
-    //         (900, 601),
-    //         (900, 660),
-    //         (100, 661),
-    //         (100, 680),
-    //         (900, 681),
-    //         (900, 700),
-    //         (100, 720),
-    //         (900, 740),
-    //         (100, 760),
-    //         (900, 820), //o
-    //         (100, 880),
-    //         (900, 900),
-    //         (100, 960),
-    //         (900, 980),
-    //         (100, 1040),
-    //         (900, 1100), //g
-    //         (100, 1160),
-    //         (900, 1180),
-    //         (100, 1240),
-    //         (900, 1260),
-    //         (100, 1280),
-    //         (100, 1600),
-    //         (900, 1620),
-    //         (100, 1640),
-    //     ];
+        assert_eq!(&['b', ' ', 'e', ' '], &vec[..]);
+    }
 
-    //     let mut converter: MorseManager<U64, U64> = MorseManager::new(
-    //         500,
-    //         MorseUnitTimeDecision::EstimateToBeDetermined(DeriveUnitTimeConfig {
-    //             guess_after_this_many_tles: 7,
-    //             max_guess_ms: 40,
-    //             min_guess_ms: 10,
-    //         }),
-    //     );
+    #[test]
+    fn test_manager() {
+        let my_intensities = [
+            (100, 0),
+            (100, 20),
+            (100, 40),
+            (900, 60),
+            (100, 120),
+            (900, 140),
+            (100, 160),
+            (900, 180),
+            (100, 200),
+            (900, 220),
+            (100, 240),
+            (100, 500),
+            (900, 520),
+            (100, 540),
+            (100, 600),
+            (900, 601),
+            (900, 660),
+            (100, 661),
+            (100, 680),
+            (900, 681),
+            (900, 700),
+            (100, 720),
+            (900, 740),
+            (100, 760),
+            (900, 820), //o
+            (100, 880),
+            (900, 900),
+            (100, 960),
+            (900, 980),
+            (100, 1040),
+            (900, 1100), //g
+            (100, 1160),
+            (900, 1180),
+            (100, 1240),
+            (900, 1260),
+            (100, 1280),
+            (100, 1600),
+            (900, 1620),
+            (100, 1640),
+        ];
+        let mut mem = MorseConverterMemoryStruct::new().unwrap();
 
-    //     for (light, time) in my_intensities.iter() {
-    //         converter
-    //             .add_sample(SampledLightIntensity {
-    //                 intensity: *light,
-    //                 sample_time: *time,
-    //             })
-    //             .unwrap();
-    //     }
+        let mut converter: MorseManager<U64, U64> = MorseManager::new(
+            &mut mem,
+            500,
+            MorseUnitTimeDecision::EstimateToBeDetermined(DeriveUnitTimeConfig {
+                guess_after_this_many_tles: 7,
+                max_guess_ms: 40,
+                min_guess_ms: 10,
+            }),
+        );
 
-    //     let vec: Vec<_, U32> = converter.produce_chars().unwrap();
+        for (light, time) in my_intensities.iter() {
+            converter
+                .add_sample(SampledLightIntensity {
+                    intensity: *light,
+                    sample_time: *time,
+                })
+                .unwrap();
+        }
 
-    //     assert_eq!(&['b', ' ', 'e', 'd', 'o', 'g', ' '], &vec[..]);
-    // }
+        let vec: Vec<_, U32> = converter.produce_chars().unwrap();
+
+        assert_eq!(&['b', ' ', 'e', 'd', 'o', 'g', ' '], &vec[..]);
+    }
 }
 
 pub fn mc_to_morse(mc: &MorseCandidate) -> Result<Morse, MorseErr> {
