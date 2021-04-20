@@ -1125,9 +1125,11 @@ mod tests {
         let mut converter: MorseConverter<U64> = MorseConverter::new(
             &mut memstruct,
             0,
-IntensityCutoffs { low: 200, high: 800, },
+            IntensityCutoffs {
+                low: 200,
+                high: 800,
+            },
             MorseUnitTimeDecision::EstimateProvided(20),
-            
         )
         .unwrap();
 
