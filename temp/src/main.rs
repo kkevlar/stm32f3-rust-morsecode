@@ -35,15 +35,6 @@ fn ima_key(leds: &mut Leds) -> morse_utils::MorseKey {
     morse_utils::construct_key().unwrap()
 }
 
-fn oofus(
-
-    tim6: &'static tim6::RegisterBlock,
-
-) {
-
-    delay(tim6, 100);
-}
-
 fn test_do_it(
     gpioa: &'static gpioa::RegisterBlock,
     tim6: &'static tim6::RegisterBlock,
@@ -54,12 +45,11 @@ fn test_do_it(
     use morse_utils::Morse::*;
     use morse_utils::*;
 
-
     let mut chars_so_far: Vec<char, U32> = Vec::new();
-    let mut mm: MorseManager<U100, U80> = MorseManager::new(
+    let mut mm: MorseManager<U130, U90> = MorseManager::new(
         400,
         MorseUnitTimeDecision::EstimateToBeDetermined(DeriveUnitTimeConfig {
-            guess_after_this_many_tles: 3,
+            guess_after_this_many_tles: 6,
             max_guess_ms: 1000,
             min_guess_ms: 100,
         }),
@@ -69,8 +59,8 @@ fn test_do_it(
     let mut err = None;
 
     while err.is_none() {
-        delay(tim6, 100);
-        time += 100;
+        delay(tim6, 30);
+        time += 30;
 
         let bit: bool = gpioa.idr.read().idr0().bit();
         let sample = SampledLightIntensity {
@@ -94,10 +84,12 @@ fn test_do_it(
         for c in new_chars.iter() {
             chars_so_far.push(*c);
         }
-        if chars_so_far.len() > 1 {
-                oofus(tim6);
+        if chars_so_far.len() > 8 {
+            let bit: bool = gpioa.idr.read().idr0().bit();
+            if bit {
+                delay(tim6, 1);
+            }
         }
-
     }
 
     return err.unwrap();
@@ -199,7 +191,7 @@ fn main() -> ! {
 
     setup_input(rcc, gpioa);
 
-   let ret =  test_do_it(gpioa, tim6);
+    let ret = test_do_it(gpioa, tim6);
 
     let mut i = 0u32;
     let ms = 50;
