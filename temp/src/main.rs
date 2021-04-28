@@ -46,7 +46,7 @@ fn test_do_it(
     use morse_utils::*;
 
     let mut chars_so_far: Vec<char, U32> = Vec::new();
-    let mut mm: MorseManager<U130, U90> = MorseManager::new(
+    let mut mm: MorseManager<U120, U90> = MorseManager::new(
         400,
         MorseUnitTimeDecision::EstimateToBeDetermined(DeriveUnitTimeConfig {
             guess_after_this_many_tles: 6,
@@ -58,9 +58,11 @@ fn test_do_it(
     let mut time: Time = 0;
     let mut err = None;
 
+    let mut arrr = ['?' ; 32];
+
     while err.is_none() {
-        delay(tim6, 30);
-        time += 30;
+        delay(tim6, 50);
+        time += 50;
 
         let bit: bool = gpioa.idr.read().idr0().bit();
         let sample = SampledLightIntensity {
@@ -88,6 +90,16 @@ fn test_do_it(
             let bit: bool = gpioa.idr.read().idr0().bit();
             if bit {
                 delay(tim6, 1);
+            }
+            for (i,c) in chars_so_far.iter().enumerate()
+            {
+arrr[i] = *c;
+
+            }
+            if arrr[7] == '/'
+            {
+                delay(tim6, 8);
+
             }
         }
     }

@@ -6,5 +6,5 @@ monitor itm port 0 on
 load
 break HardFaultTrampoline
 break main
-break oofus
+break main.rs:99
 continue
