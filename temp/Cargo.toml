@@ -13,3 +13,6 @@ embedded-hal = "0.2.4"
 [dependencies.morse_utils]
 path = "../morse_utils"
 
+[profile.dev]
+opt-level = 1  
+
