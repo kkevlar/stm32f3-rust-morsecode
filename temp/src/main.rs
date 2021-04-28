@@ -35,7 +35,14 @@ fn ima_key(leds: &mut Leds) -> morse_utils::MorseKey {
     morse_utils::construct_key().unwrap()
 }
 
-fn oofus() {}
+fn oofus(
+
+    tim6: &'static tim6::RegisterBlock,
+
+) {
+
+    delay(tim6, 100);
+}
 
 fn test_do_it(
     gpioa: &'static gpioa::RegisterBlock,
@@ -48,8 +55,8 @@ fn test_do_it(
     use morse_utils::*;
 
 
-    let mut chars_so_far: Vec<char, U16> = Vec::new();
-    let mut mm: MorseManager<U60, U50> = MorseManager::new(
+    let mut chars_so_far: Vec<char, U32> = Vec::new();
+    let mut mm: MorseManager<U100, U80> = MorseManager::new(
         400,
         MorseUnitTimeDecision::EstimateToBeDetermined(DeriveUnitTimeConfig {
             guess_after_this_many_tles: 3,
@@ -88,10 +95,9 @@ fn test_do_it(
             chars_so_far.push(*c);
         }
         if chars_so_far.len() > 1 {
-            loop {
-                oofus()
-            }
+                oofus(tim6);
         }
+
     }
 
     return err.unwrap();
