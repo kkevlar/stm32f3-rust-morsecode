@@ -37,14 +37,11 @@ fn setup_input(rcc: &aux9::rcc::RegisterBlock, gpioa: &aux9::gpioa::RegisterBloc
     }
 }
 
-struct MyDelay<'a>
-{
-    tim: &'a tim6::RegisterBlock
+struct MyDelay<'a> {
+    tim: &'a tim6::RegisterBlock,
 }
 
-impl<'a> lcd::Delay for MyDelay<'a>
-{
-
+impl<'a> lcd::Delay for MyDelay<'a> {
     fn delay_ms(&self, ms: u32) -> () {
         delay(self.tim, ms as u16)
     }
@@ -52,7 +49,6 @@ impl<'a> lcd::Delay for MyDelay<'a>
     fn delay_us(&self, ms: u32) -> () {
         delay(self.tim, ms as u16)
     }
-
 }
 
 #[entry]
@@ -116,12 +112,10 @@ fn main() -> ! {
         .downgrade();
     let mut pc7pin = lcd::LcdPin::new(&mut bruh);
 
-    let mut mydelay = MyDelay{
-     tim:   tim6,
-    };
+    let mut mydelay = MyDelay { tim: tim6 };
 
     let mut lcd_obj = lcd::LcdObject::new(
-        lcd::DataPinCollection::Four([pc0pin, pc1pin,pc2pin,pc3pin]),
+        lcd::DataPinCollection::Four([pc0pin, pc1pin, pc2pin, pc3pin]),
         pc4pin,
         pc5pin,
         pc6pin,
@@ -130,8 +124,9 @@ fn main() -> ! {
 
     lcd_obj.initialize();
 
-    for c in "Hello World!".chars()
-    { lcd_obj.send_char(c); }
+    for c in "Hello World!".chars() {
+        lcd_obj.send_char(c);
+    }
 
     let mut buster = false;
 
@@ -152,6 +147,5 @@ fn main() -> ! {
             }
             i += 1;
         }
-
     }
 }
