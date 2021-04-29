@@ -62,6 +62,8 @@ fn main() -> ! {
         .downgrade();
     let mut mypin = lcd::LcdPin::new(&mut bruh);
 
+    let mut lcd_obj = 
+
     let mut buster = false;
 
     let mut i = 0u32;
