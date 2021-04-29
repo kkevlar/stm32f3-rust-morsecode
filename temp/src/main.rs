@@ -7,10 +7,14 @@ use lcd::Delay;
 mod lcd;
 
 #[inline(never)]
-fn delay(tim6: &tim6::RegisterBlock, ms: u16) {
+fn delay(tim6: &tim6::RegisterBlock, us: u16) {
+
+    let us = if us < 10 {10} else{  us };
+    let us = us/10;
+
     // Set the timer to go off in `ms` ticks
     // 1 tick = 1 ms
-    tim6.arr.write(|w| w.arr().bits(ms));
+    tim6.arr.write(|w| w.arr().bits(us));
 
     // CEN: Enable the counter
     tim6.cr1.modify(|_, w| w.cen().set_bit());
@@ -42,12 +46,13 @@ struct MyDelay<'a> {
 }
 
 impl<'a> lcd::Delay for MyDelay<'a> {
-    fn delay_ms(&self, ms: u32) -> () {
-        delay(self.tim, ms as u16)
+    fn delay_ms(&self, ms: u16) -> () {
+        for _ in 0..1000
+        { delay(self.tim, ms ) }
     }
 
-    fn delay_us(&self, ms: u32) -> () {
-        delay(self.tim, ms as u16)
+    fn delay_us(&self, ms: u16) -> () {
+        delay(self.tim, ms )
     }
 }
 
@@ -67,7 +72,7 @@ fn main() -> ! {
     // PSC = 7999
     // 8 MHz / (7999 + 1) = 1 KHz
     // The counter (CNT) will increase on every millisecond
-    tim6.psc.write(|w| w.psc().bits(7_999));
+    tim6.psc.write(|w| w.psc().bits(79));
 
     setup_input(rcc, gpioa);
 
@@ -97,11 +102,6 @@ fn main() -> ! {
         .downgrade();
     let mut pc4pin = lcd::LcdPin::new(&mut bruh);
     let mut bruh = gpioc
-        .pc5
-        .into_push_pull_output(&mut gpioc.moder, &mut gpioc.otyper)
-        .downgrade();
-    let mut pc5pin = lcd::LcdPin::new(&mut bruh);
-    let mut bruh = gpioc
         .pc6
         .into_push_pull_output(&mut gpioc.moder, &mut gpioc.otyper)
         .downgrade();
@@ -116,17 +116,26 @@ fn main() -> ! {
 
     let mut lcd_obj = lcd::LcdObject::new(
         lcd::DataPinCollection::Four([pc0pin, pc1pin, pc2pin, pc3pin]),
+        pc7pin,
         pc4pin,
-        pc5pin,
         pc6pin,
         &mydelay,
     );
+
+    leds[0].on();
+
+    mydelay.delay_ms(2000);
+    leds[0].off();
+    leds[1].on();
+
+    
 
     lcd_obj.initialize();
 
     for c in "Hello World!".chars() {
         lcd_obj.send_char(c);
     }
+
 
     let mut buster = false;
 

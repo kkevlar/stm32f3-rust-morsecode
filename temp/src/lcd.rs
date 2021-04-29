@@ -1,10 +1,10 @@
-use core::u32;
+use core::{convert::TryInto, u32};
 
 use embedded_hal::digital::v2::OutputPin;
 
 pub trait Delay {
-    fn delay_us(&self, us: u32) -> ();
-    fn delay_ms(&self, ms: u32) -> ();
+    fn delay_us(&self, us: u16) -> ();
+    fn delay_ms(&self, ms: u16) -> ();
 }
 
 pub struct LcdPin<'a> {
@@ -15,12 +15,15 @@ pub enum DataPinCollection<'a> {
     Four([LcdPin<'a>; 4]),
     Eight([LcdPin<'a>; 8]),
 }
+
+#[derive(PartialEq, Eq, Clone, Debug)]
 pub enum LcdCommand {
     ReturnHome,
     ReturnHomeAlt,
     ClearDisplay,
 }
 
+#[derive(PartialEq, Eq, Clone, Debug)]
 enum PrivateLcdCommand {
     SetDefault8Bit,
     SetDefault4Bit,
@@ -30,18 +33,21 @@ enum PrivateLcdCommand {
     FunctionSet4Bit2,
 }
 
+
+#[derive(PartialEq, Eq, Clone, Debug)]
 enum InternalLcdCommand {
     PrivateCommand(PrivateLcdCommand),
     PublicCommand(LcdCommand),
     RawCommand(u8),
 }
 
-#[derive(PartialEq, Eq, Debug)]
-enum LcdRsValue {
-    Command,
-    Char,
+#[derive(PartialEq, Eq, Clone, Debug)]
+enum Payload {
+    Command(InternalLcdCommand),
+    Char(char),
 }
 
+#[derive(PartialEq, Eq, Clone, Debug)]
 enum FourPinNibbleChoice {
     LowNibble,
     HighNibble,
@@ -112,43 +118,49 @@ impl<'a, 'b, 'c, 'd, 'e> LcdObject<'a, 'b, 'c, 'd, 'e> {
     }
 
     pub fn initialize(&mut self) -> Result<(), ()> {
+        use InternalLcdCommand::*;
+        use PrivateLcdCommand::*;
         use DataPinCollection::*;
         match &mut self.data_pins {
             Four(four) => {
                 use FourPinNibbleChoice::*;
-                use InternalLcdCommand::*;
-                use PrivateLcdCommand::*;
 
                 for _ in 0..3 {
                     self.lcd_internal.private_load_n_pulse4(
                         four,
-                        PrivateCommand(FunctionSet4Bit1).get_numeric(),
+                    &Payload::Command(PrivateCommand(FunctionSet4Bit1)),
                         HighNibble,
                     )?;
                     self.lcd_internal.delay.delay_us(40);
                 }
+                for _ in 0..3 {
                 self.lcd_internal.private_load_n_pulse4(
                     four,
-                    PrivateCommand(FunctionSet4Bit2).get_numeric(),
+                    &Payload::Command(PrivateCommand(FunctionSet4Bit2)),
                     HighNibble,
                 )?;
+            }
                 self.lcd_internal.delay.delay_us(40);
                 self.send_command_internal(PrivateCommand(SetDefault4Bit))?;
                 self.send_command_internal(PrivateCommand(SetDefault4Bit))?;
-
-                Ok(())
             }
 
             Eight(_) => {
                 unimplemented!()
             }
-        }
+        };
+
+        self.send_command_internal(PrivateCommand(DisplayOnCursorBlink))?;
+        self.send_command(LcdCommand::ClearDisplay)?;
+        self.send_command_internal(PrivateCommand(EntryModeDefault))?;
+
+        Ok(())
     }
 
-    fn send_generic(&mut self, data: u8, rs: LcdRsValue) -> Result<(), ()> {
+    fn send_generic(&mut self, payload : &Payload) -> Result<(), ()> {
         use DataPinCollection::*;
         match &mut self.data_pins {
-            Four(four) => self.lcd_internal.send_generic_4(four, data, rs),
+            Four(four) => self.lcd_internal.send_generic_4(four, payload),
 
             Eight(_) => unimplemented!(),
         }
@@ -159,7 +171,7 @@ impl<'a, 'b, 'c, 'd, 'e> LcdObject<'a, 'b, 'c, 'd, 'e> {
     }
 
     fn send_command_internal(&mut self, command: InternalLcdCommand) -> Result<(), ()> {
-        self.send_generic(command.get_numeric(), LcdRsValue::Command)?;
+        self.send_generic(&Payload::Command(command.clone()))?;
 
         use LcdCommand::*;
         match command {
@@ -176,7 +188,7 @@ impl<'a, 'b, 'c, 'd, 'e> LcdObject<'a, 'b, 'c, 'd, 'e> {
     }
 
     pub fn send_char(&mut self, c: char) -> Result<(), ()> {
-        self.send_generic(c as u8, LcdRsValue::Char)
+        self.send_generic(&Payload::Char(c))
     }
 
     pub fn set_cursor(&mut self, row: u8, col: u8) -> Result<(), ()> {
@@ -190,20 +202,36 @@ impl<'b, 'c, 'd, 'e> LcdInternal<'b, 'c, 'd, 'e> {
     fn private_load_n_pulse4(
         &mut self,
         data_pins: &mut [LcdPin; 4],
-        data: u8,
+        payload: &Payload,
         nibble: FourPinNibbleChoice,
     ) -> Result<(), ()> {
+        self.control_enable_pin.set_low()?;
+        self.control_rw_pin.set_low()?;
+
         let mask_start = match nibble {
             FourPinNibbleChoice::HighNibble => 0x10,
             FourPinNibbleChoice::LowNibble => 0x01,
         };
 
+        let (rs_pin_low, data) = match payload
+        {
+            Payload::Char(c) => (false, *c as u8),
+            Payload::Command(command) => (true, command.get_numeric()),
+        };
+
+        if rs_pin_low {
+            self.control_rs_pin.set_low()?;
+        } else {
+            self.control_rs_pin.set_high()?;
+        }
+
         for i in 0..4 {
             // What should the mask be?
             let mask = mask_start << i;
+            let high = data & mask > 0;
 
             // Use the mask to set the data pin high or low
-            if data & mask > 0 {
+            if  high{
                 data_pins[i].set_high()?;
             } else {
                 data_pins[i].set_low()?;
@@ -219,23 +247,17 @@ impl<'b, 'c, 'd, 'e> LcdInternal<'b, 'c, 'd, 'e> {
     fn send_generic_4(
         &mut self,
         data_pins: &mut [LcdPin; 4],
-        data: u8,
-        rs: LcdRsValue,
+        payload: &Payload,
     ) -> Result<(), ()> {
-        if rs == LcdRsValue::Char {
-            self.control_rs_pin.set_high()?;
-        } else {
-            self.control_rs_pin.set_low()?;
-        }
 
         self.control_enable_pin.set_low()?;
         self.control_rw_pin.set_low()?;
 
         use FourPinNibbleChoice::*;
 
-        self.private_load_n_pulse4(data_pins, data, HighNibble)?;
+        self.private_load_n_pulse4(data_pins, payload, HighNibble)?;
         self.delay.delay_us(40);
-        self.private_load_n_pulse4(data_pins, data, LowNibble)?;
+        self.private_load_n_pulse4(data_pins, payload, LowNibble)?;
 
         Ok(())
     }
