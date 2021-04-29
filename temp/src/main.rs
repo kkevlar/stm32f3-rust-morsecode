@@ -128,13 +128,28 @@ fn main() -> ! {
     leds[0].off();
     leds[1].on();
 
-    
-
     lcd_obj.initialize();
 
-    for c in "Hello World!".chars() {
+
+    for c in "test".chars()
+    {
+       lcd_obj.send_char(c) ;
+    }
+    lcd_obj.send_command(lcd::LcdCommand::ClearDisplay);
+    lcd_obj.send_command(lcd::LcdCommand::ReturnHome);
+
+    for c in "Hello KKATV!".chars() {
         lcd_obj.send_char(c);
     }
+    lcd_obj.set_cursor(1, 0);
+    for c in "Bruh Sound Effect #2".chars() {
+        lcd_obj.send_char(c);
+    }
+    leds[1].off();
+    leds[0].on();
+
+    mydelay.delay_ms(2000);
+    leds[0].off();
 
 
     let mut buster = false;
