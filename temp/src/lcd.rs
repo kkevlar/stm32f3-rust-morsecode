@@ -1,4 +1,3 @@
-
 use embedded_hal::digital::v2::OutputPin;
 
 pub trait Delay {
@@ -47,7 +46,6 @@ impl<'a, 'b, 'c, 'd, 'e> LcdObject<'a, 'b, 'c, 'd, 'e> {
         data: u8,
         rs: bool,
     ) -> Result<(), ()> {
-
         if rs {
             self.control_rs_pin.set_high()?;
         } else {
@@ -73,8 +71,9 @@ impl<'a, 'b, 'c, 'd, 'e> LcdObject<'a, 'b, 'c, 'd, 'e> {
                 self.delay.delay_us(1);
                 self.control_enable_pin.set_low()?;
 
-                if count == 0
-                { self.delay.delay_us(40); }
+                if count == 0 {
+                    self.delay.delay_us(40);
+                }
             }
         }
 
