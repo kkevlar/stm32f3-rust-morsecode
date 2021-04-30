@@ -43,6 +43,7 @@ fn ima_key(leds: &mut Leds) -> morse_utils::MorseKey {
 }
 
 fn test_do_it(
+    lcd: &mut LcdObject,
     gpioa: &'static gpioa::RegisterBlock,
     tim6: &'static tim6::RegisterBlock,
 ) -> morse_utils::MorseErr {
@@ -93,6 +94,7 @@ fn test_do_it(
         };
         for c in new_chars.iter() {
             chars_so_far.push(*c);
+            lcd.send_char(*c);
         }
         if chars_so_far.len() > 8 {
             let bit: bool = gpioa.idr.read().idr0().bit();
@@ -324,11 +326,13 @@ fn main() -> ! {
     // PSC = 7999
     // 8 MHz / (7999 + 1) = 1 KHz
     // The counter (CNT) will increase on every millisecond
-    tim6.psc.write(|w| w.psc().bits(7_9));
+    tim6.psc.write(|w| w.psc().bits(79));
 
     setup_input(rcc, gpioa);
 
-    let ret = test_do_it(gpioa, tim6);
+    let mut stuff = prep_lcd_construction(gpioc, tim6);
+    let mut lcd = construct_lcd(&mut stuff).unwrap();
+    let ret = test_do_it(&mut lcd, gpioa, tim6);
 
     let mut i = 0u32;
     let ms = 50;
