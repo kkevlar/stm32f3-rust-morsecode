@@ -53,6 +53,8 @@ fn test_do_it(
     use morse_utils::Morse::*;
     use morse_utils::*;
 
+    lcd.send_command(lcd::LcdCommand::ClearDisplay);
+
     let mut chars_so_far: Vec<char, U32> = Vec::new();
     let mut mm: MorseManager<U120, U90> = MorseManager::new(
         400,
