@@ -115,36 +115,36 @@ lcd::DataPinCollection::Four(
 fn prep_lcd_construction<'a>(mut gpioc: aux9::gpioc::Parts, tim6: &'a tim6::RegisterBlock,
 ) ->  PreLcdInfo<'a>
 {
- let mut pp0 = gpioc
+ let pp0 = gpioc
         .pc0
         .into_push_pull_output(&mut gpioc.moder, &mut gpioc.otyper)
         .downgrade();
-    let mut pp1 = gpioc
+    let pp1 = gpioc
         .pc1
         .into_push_pull_output(&mut gpioc.moder, &mut gpioc.otyper)
         .downgrade();
-    let mut pp2 = gpioc
+    let pp2 = gpioc
         .pc2
         .into_push_pull_output(&mut gpioc.moder, &mut gpioc.otyper)
         .downgrade();
-    let mut pp3 = gpioc
+    let pp3 = gpioc
         .pc3
         .into_push_pull_output(&mut gpioc.moder, &mut gpioc.otyper)
         .downgrade();
-    let mut pp4 = gpioc
+    let pp4 = gpioc
         .pc4
         .into_push_pull_output(&mut gpioc.moder, &mut gpioc.otyper)
         .downgrade();
-    let mut pp6 = gpioc
+    let pp6 = gpioc
         .pc6
         .into_push_pull_output(&mut gpioc.moder, &mut gpioc.otyper)
         .downgrade();
-    let mut pp7 = gpioc
+    let pp7 = gpioc
         .pc7
         .into_push_pull_output(&mut gpioc.moder, &mut gpioc.otyper)
         .downgrade();
 
-    let mut mydelay = MyDelay { tim: tim6 };
+    let mydelay = MyDelay { tim: tim6 };
 
     PreLcdInfo{
         c0: pp0,
@@ -160,7 +160,7 @@ fn prep_lcd_construction<'a>(mut gpioc: aux9::gpioc::Parts, tim6: &'a tim6::Regi
 
 #[entry]
 fn main() -> ! {
-    let (mut leds, gpioa, mut gpioc, rcc, tim6) = aux9::init();
+    let (mut leds, gpioa, gpioc, rcc, tim6) = aux9::init();
 
     // Power on the TIM6 timer
     rcc.apb1enr.modify(|_, w| w.tim6en().set_bit());
