@@ -183,9 +183,126 @@ fn test_manager() -> bool {
     &['b', ' ', 'e', 'd', 'o', 'g', ' '] == &vec[..]
 }
 
+struct MyDelay<'a> {
+    tim: &'a tim6::RegisterBlock,
+}
+
+impl<'a> lcd::Delay for MyDelay<'a> {
+    fn delay_ms(&self, ms: u16) -> () {
+        for _ in 0..1000
+        { delayus(self.tim, ms ) }
+    }
+
+    fn delay_us(&self, ms: u16) -> () {
+        delayus(self.tim, ms )
+    }
+
+}
+
+use aux9::gpioc::PCx;
+use aux9::hal::gpio::Output;
+use aux9::hal::gpio::PushPull;
+
+struct PreLcdInfo<'a>
+{
+   c0 :PCx<Output<PushPull>> ,
+   c1 :PCx<Output<PushPull>> ,
+   c2 :PCx<Output<PushPull>> ,
+   c3 :PCx<Output<PushPull>> ,
+   c4 :PCx<Output<PushPull>> ,
+   c6 :PCx<Output<PushPull>> ,
+   c7 :PCx<Output<PushPull>> ,
+   mydelay: MyDelay<'a>,
+}
+
+fn construct_lcd<'a>(info: &'a mut PreLcdInfo) -> Result<LcdObject<'a,'a,'a,'a,'a>, ()>
+{
+   let mut lcd_obj = LcdObject::new(
+lcd::DataPinCollection::Four(
+       [
+       lcd::LcdPin::new(&mut info.c0),
+       lcd::LcdPin::new(&mut info.c1),
+       lcd::LcdPin::new(&mut info.c2),
+       lcd::LcdPin::new(&mut info.c3),
+       ]),
+
+       lcd::LcdPin::new(&mut info.c7),
+       lcd::LcdPin::new(&mut info.c4),
+       lcd::LcdPin::new(&mut info.c6),
+      &info.mydelay, 
+
+   ) ;
+    info.mydelay.delay_ms(100);
+  lcd_obj.initialize()?;
+
+
+    for c in "test".chars()
+    {
+       lcd_obj.send_char(c) ?;
+    }
+    lcd_obj.send_command(lcd::LcdCommand::ClearDisplay)?;
+    lcd_obj.send_command(lcd::LcdCommand::ReturnHome)?;
+
+    for c in "Hello Lcd!".chars() {
+        lcd_obj.send_char(c)?;
+    }
+    lcd_obj.set_cursor(1, 0)?;
+    for c in "LIQUID CRYSTAL".chars() {
+        lcd_obj.send_char(c)?;
+    }
+
+    Ok(lcd_obj)
+}
+
+fn prep_lcd_construction<'a>(mut gpioc: aux9::gpioc::Parts, tim6: &'a tim6::RegisterBlock,
+) ->  PreLcdInfo<'a>
+{
+ let pp0 = gpioc
+        .pc0
+        .into_push_pull_output(&mut gpioc.moder, &mut gpioc.otyper)
+        .downgrade();
+    let pp1 = gpioc
+        .pc1
+        .into_push_pull_output(&mut gpioc.moder, &mut gpioc.otyper)
+        .downgrade();
+    let pp2 = gpioc
+        .pc2
+        .into_push_pull_output(&mut gpioc.moder, &mut gpioc.otyper)
+        .downgrade();
+    let pp3 = gpioc
+        .pc3
+        .into_push_pull_output(&mut gpioc.moder, &mut gpioc.otyper)
+        .downgrade();
+    let pp4 = gpioc
+        .pc4
+        .into_push_pull_output(&mut gpioc.moder, &mut gpioc.otyper)
+        .downgrade();
+    let pp6 = gpioc
+        .pc6
+        .into_push_pull_output(&mut gpioc.moder, &mut gpioc.otyper)
+        .downgrade();
+    let pp7 = gpioc
+        .pc7
+        .into_push_pull_output(&mut gpioc.moder, &mut gpioc.otyper)
+        .downgrade();
+
+    let mydelay = MyDelay { tim: tim6 };
+
+    PreLcdInfo{
+        c0: pp0,
+        c1: pp1,
+        c2: pp2,
+        c3: pp3,
+        c4: pp4,
+        c6: pp6,
+        c7: pp7,
+        mydelay: mydelay,
+    }
+}
+
 #[entry]
 fn main() -> ! {
-    let (mut leds, gpioa, rcc, tim6) = aux9::init();
+    let (mut leds, gpioa, gpioc, rcc, tim6) = aux9::init();
 
     // Power on the TIM6 timer
     rcc.apb1enr.modify(|_, w| w.tim6en().set_bit());
@@ -199,7 +316,7 @@ fn main() -> ! {
     // PSC = 7999
     // 8 MHz / (7999 + 1) = 1 KHz
     // The counter (CNT) will increase on every millisecond
-    tim6.psc.write(|w| w.psc().bits(7_999));
+    tim6.psc.write(|w| w.psc().bits(7_9));
 
     setup_input(rcc, gpioa);
 
