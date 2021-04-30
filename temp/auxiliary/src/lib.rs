@@ -11,12 +11,12 @@ pub use f3::{
     hal::stm32f30x::{rcc, tim6, gpioa},
     led::Leds,
     hal,
+    hal::gpio::gpioc,
 };
 
 use f3::hal::{
     prelude::*,
     stm32f30x::{self, RCC, TIM6, GPIOA},
-    gpio::gpioc,
 };
 
 pub fn init() -> (
