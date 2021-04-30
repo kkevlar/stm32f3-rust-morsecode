@@ -3,12 +3,19 @@
 
 use aux9::{entry, gpioa, tim6, Leds};
 use morse_utils::{construct_key, MorseKey};
+use lcd::{Delay, LcdObject};
+
+mod lcd;
 
 #[inline(never)]
-fn delay(tim6: &tim6::RegisterBlock, ms: u16) {
+fn delayus(tim6: &tim6::RegisterBlock, us: u16) {
+
+    let us = if us < 10 {10} else{  us };
+    let us = us/10;
+
     // Set the timer to go off in `ms` ticks
     // 1 tick = 1 ms
-    tim6.arr.write(|w| w.arr().bits(ms));
+    tim6.arr.write(|w| w.arr().bits(us));
 
     // CEN: Enable the counter
     tim6.cr1.modify(|_, w| w.cen().set_bit());
@@ -61,7 +68,8 @@ fn test_do_it(
     let mut arrr = ['?' ; 32];
 
     while err.is_none() {
-        delay(tim6, 50);
+        for _ in 0..1000
+        { delayus(tim6, 50); }
         time += 50;
 
         let bit: bool = gpioa.idr.read().idr0().bit();
@@ -89,7 +97,7 @@ fn test_do_it(
         if chars_so_far.len() > 8 {
             let bit: bool = gpioa.idr.read().idr0().bit();
             if bit {
-                delay(tim6, 1);
+                delayus(tim6, 1);
             }
             for (i,c) in chars_so_far.iter().enumerate()
             {
@@ -98,7 +106,7 @@ arrr[i] = *c;
             }
             if arrr[7] == '/'
             {
-                delay(tim6, 8);
+                delayus(tim6, 8);
 
             }
         }
@@ -329,9 +337,9 @@ fn main() -> ! {
             let next = (curr + 1) % 8;
 
             leds[next].on();
-            delay(tim6, ms);
+            delayus(tim6, ms);
             leds[curr].off();
-            delay(tim6, ms);
+            delayus(tim6, ms);
 
             if i > 1000 {
                 leds[0].on();
